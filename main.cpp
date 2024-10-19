@@ -764,10 +764,19 @@ int main() {
     }
     std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, surfaceFormats.data());
-
-    if (formatCount == 0) {
-        std::cerr << "No surface formats!" << std::endl;
-        return -1;
+    VkSurfaceFormatKHR selectedFormat;
+    {
+        bool found = false;
+        for (const VkSurfaceFormatKHR& format : surfaceFormats) {
+            if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                selectedFormat = format;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw std::runtime_error("sRGB is not supported");
+        }
     }
 
     // Get supported presentation modes
@@ -775,8 +784,6 @@ int main() {
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
     std::vector<VkPresentModeKHR> presentModes(presentModeCount);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
-
-    VkSurfaceFormatKHR selectedFormat = surfaceFormats[0]; // Pick the first format (or choose based on your needs)
     VkPresentModeKHR selectedPresentMode = VK_PRESENT_MODE_FIFO_KHR; // Vsync mode, can also be VK_PRESENT_MODE_IMMEDIATE_KHR
 
     VkExtent2D swapchainExtent;
@@ -1345,7 +1352,7 @@ int main() {
         renderPassInfo.renderArea.extent = { swapchainExtent.width, swapchainExtent.height };
 
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = { 0.1f, 0.1f, 0.1f, 1.0f };
+        clearValues[0].color = { 0.05f, 0.05f, 0.05f, 1.0f };
         clearValues[1].depthStencil = {1.0f, 0};
         renderPassInfo.clearValueCount = clearValues.size();
         renderPassInfo.pClearValues = clearValues.data();
