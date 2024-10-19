@@ -817,9 +817,8 @@ int main() {
     swapchainInfo.oldSwapchain = VK_NULL_HANDLE; // For the initial swapchain
 
     VkSwapchainKHR swapchain;
-    VkResult result = vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &swapchain);
-    if (result != VK_SUCCESS) {
-        std::cerr << "Failed to create swapchain: " << result << std::endl;
+    if (vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &swapchain) != VK_SUCCESS) {
+        std::cerr << "Failed to create swapchain: " << std::endl;
         return -1;
     }
 
@@ -1315,11 +1314,21 @@ int main() {
     SDL_Event event;
     while (running) {
         vkWaitForFences(device, 1, &renderFences[currentFrame], true, UINT64_MAX);
-        vkResetFences(device, 1, &renderFences[currentFrame]);
 
         // Acquire an image from the swapchain
         uint32_t imageIndex;
-        vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+        {
+            VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+            if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+                // recreateSwapChain();
+                std::cerr << "swapchain is out of date and needs to be recreated" << std::endl;
+                return 0;
+            } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+                throw std::runtime_error("failed to acquire swap chain image!");
+            }
+        }
+
+        vkResetFences(device, 1, &renderFences[currentFrame]);
 
         // data
         {
