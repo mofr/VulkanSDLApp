@@ -1,10 +1,13 @@
 #version 450
 
-layout(location = 0) in vec3 fragPosition; // Input from the vertex shader
-layout(location = 1) in vec3 fragNormal; // Input from the vertex shader
-layout(location = 2) in vec3 fragColor; // Input from the vertex shader
+layout(location = 0) in vec3 fragPosition;
+layout(location = 1) in vec3 fragNormal;
+layout(location = 2) in vec3 fragColor;
+layout(location = 3) in vec2 fragUV;
 
 layout(location = 0) out vec4 outColor; // Output color to the framebuffer
+
+layout(binding = 1) uniform sampler2D texSampler;
 
 void main() {
 //    outColor = vec4(fragColor, 1.0);
@@ -21,8 +24,11 @@ void main() {
     vec3 lightDir = normalize(lightPos - fragPosition);
 
     // Calculate diffuse component
-    float diff = max(dot(normal, lightDir), 0.0) * (1.0 - 0.1);
+    float lightIntensity = max(dot(normal, lightDir), 0.0) * (1.0 - 0.1);
+
+    vec4 textureColor = texture(texSampler, fragUV);
+    vec3 diffuse = vec3(textureColor);
 
     // Simple color based on the lighting
-    outColor = vec4(fragColor * diff + ambient, 1.0); // Apply lighting
+    outColor = vec4(diffuse * lightIntensity + ambient, 1.0); // Apply lighting
 }
