@@ -11,7 +11,7 @@ void main() {
 //    return;
 
     vec3 lightPos = vec3(0.0, -3.0, -5.0); // Position of the light source
-    float ambient = 0.15;
+    vec3 ambient = vec3(0.02, 0.02, 0.1);
 
     vec3 normal = normalize(fragNormal);
 //    outColor = vec4(normal * 0.5 + 0.5, 1.0);
@@ -21,8 +21,8 @@ void main() {
     vec3 lightDir = normalize(lightPos - fragPosition);
 
     // Calculate diffuse component
-    float diff = max(dot(normal, lightDir), 0.0) * (1.0 - ambient) + ambient;
+    float diff = max(dot(normal, lightDir), 0.0) * (1.0 - 0.1);
 
     // Simple color based on the lighting
-    outColor = vec4(fragColor * diff, 1.0); // Apply lighting
+    outColor = vec4(fragColor * diff + ambient, 1.0); // Apply lighting
 }
