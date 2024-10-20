@@ -1069,6 +1069,39 @@ int main() {
         obj2.mesh = mesh;
     }
     obj2.descriptorSet = pipeline.createDescriptorSet0();
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = modelTransformBuffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(ModelTransform);
+
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = obj2.mesh.textureImageView;
+        imageInfo.sampler = obj2.mesh.textureSampler;
+
+        std::array writes = {
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = obj2.descriptorSet,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &bufferInfo,
+            },
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = obj2.descriptorSet,
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pImageInfo = &imageInfo,
+            },
+        };
+        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+    }
 
 
     // { // vulkan space, where Z and goes away, X goes right and Y goes down
@@ -1187,11 +1220,20 @@ int main() {
 
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 1, 1, &viewProjectionDescriptorSet, 0, nullptr);
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &tower.descriptorSet, 0, nullptr);
-        VkBuffer vertexBuffers[] = { tower.mesh.vertexBuffer };
-        VkDeviceSize offsets[] = { 0 };
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdDraw(commandBuffer, static_cast<uint32_t>(tower.mesh.vertices.size()), 1, 0, 0);
+        {
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &tower.descriptorSet, 0, nullptr);
+            VkBuffer vertexBuffers[] = { tower.mesh.vertexBuffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+            vkCmdDraw(commandBuffer, static_cast<uint32_t>(tower.mesh.vertices.size()), 1, 0, 0);
+        }
+        {
+            // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &obj2.descriptorSet, 0, nullptr);
+            // VkBuffer vertexBuffers[] = { obj2.mesh.vertexBuffer };
+            // VkDeviceSize offsets[] = { 0 };
+            // vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+            // vkCmdDraw(commandBuffer, static_cast<uint32_t>(obj2.mesh.vertices.size()), 1, 0, 0);
+        }
 
         vkCmdEndRenderPass(commandBuffer);
 
