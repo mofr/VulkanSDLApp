@@ -32,9 +32,14 @@ dependencies = [
 
 VulkanSDLApp = executable(
         'VulkanSDLApp',
-        ['main.cpp'],
+        [
+                'main.cpp',
+                '3rdparty/stb_image.cpp',
+                '3rdparty/tiny_obj_loader.cpp',
+        ],
         install : true,
         dependencies: dependencies,
+        include_directories: ['3rdparty'],
 )
 
 test('test', VulkanSDLApp)
