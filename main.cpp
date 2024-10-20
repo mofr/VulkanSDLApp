@@ -15,12 +15,8 @@
 #include "tiny_obj_loader.h"
 #include "stb_image.h"
 
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 normal;
-    glm::vec3 color;
-    glm::vec2 uv;
-};
+#include "Pipeline.h"
+#include "Vertex.h"
 
 struct MVP {
     glm::mat4 model;
@@ -114,35 +110,6 @@ bool checkValidationLayerSupport(const std::vector<const char*>& validationLayer
     return true; // All layers found
 }
 
-VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code) {
-    VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-    VkShaderModule shaderModule;
-    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create shader module!");
-    }
-
-    return shaderModule;
-}
-
-std::vector<char> loadShader(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("failed to open shader file!");
-    }
-
-    size_t fileSize = (size_t)file.tellg();
-    std::vector<char> buffer(fileSize);
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-    file.close();
-
-    return buffer;
-}
-
 VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
     for (VkFormat format : candidates) {
         VkFormatProperties props;
@@ -233,7 +200,7 @@ std::vector<Vertex> loadObj(const std::string& filePath) {
         for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
             size_t fv = size_t(shapes[s].mesh.num_face_vertices[f]);
 
-            int material_index = shapes[s].mesh.material_ids[f];
+            size_t material_index = shapes[s].mesh.material_ids[f];
             glm::vec3 color = glm::vec3(1.0f);
             if (material_index < materials.size()) {
                 auto diffuse = materials[material_index].diffuse;
@@ -309,7 +276,7 @@ std::vector<Vertex> loadObj(const std::string& filePath) {
         v.normal.z *= -1;
         v.normal.y *= -1;
     }
-    for (int i = 0; i < vertices.size() - 2; i += 3){
+    for (size_t i = 0; i < vertices.size() - 2; i += 3){
         glm::vec3& v0 = vertices[i].pos;
         glm::vec3& v1 = vertices[i + 1].pos;
         glm::vec3& v2 = vertices[i + 2].pos;
@@ -390,7 +357,7 @@ void copyBuffer(VkDevice device, VkCommandPool commandPool, VkQueue queue, VkBuf
     endSingleTimeCommands(device, commandPool, queue, commandBuffer);
 }
 
-void transitionImageLayout(VkDevice device, VkCommandPool commandPool, VkQueue queue, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) {
+void transitionImageLayout(VkDevice device, VkCommandPool commandPool, VkQueue queue, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout) {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
     VkImageMemoryBarrier barrier{};
@@ -508,9 +475,9 @@ VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkC
         textureImageMemory
     );
 
-    transitionImageLayout(device, commandPool, queue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    transitionImageLayout(device, commandPool, queue, textureImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     copyBufferToImage(device, commandPool, queue, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-    transitionImageLayout(device, commandPool, queue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    transitionImageLayout(device, commandPool, queue, textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);
@@ -647,7 +614,7 @@ int main() {
     }
 
     VkDevice device;
-    uint32_t graphicsQueueFamilyIndex = -1;
+    uint32_t graphicsQueueFamilyIndex = UINT32_MAX;
     {
         uint32_t queueFamilyCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
@@ -657,42 +624,13 @@ int main() {
         for (size_t i = 0; i < queueFamilies.size(); i++) {
             const auto& queueFamily = queueFamilies[i];
 
-            // std::cout << "Queue Family " << i << ": " << queueFamily.queueCount << " queues" << std::endl;
-
             if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                // std::cout << "  Supports Graphics" << std::endl;
-                if (graphicsQueueFamilyIndex == -1) {
-                    graphicsQueueFamilyIndex = i;
-                }
+                graphicsQueueFamilyIndex = i;
+                break;
             }
-            // if (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) {
-            //     std::cout << "  Supports Compute" << std::endl;
-            // }
-            // if (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT) {
-            //     std::cout << "  Supports Transfer" << std::endl;
-            // }
-            // if (queueFamily.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) {
-            //     std::cout << "  Supports Sparse Binding" << std::endl;
-            // }
-            // if (queueFamily.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) {
-            //     std::cout << "  Supports Video Decode" << std::endl;
-            // }
-            // if (queueFamily.queueFlags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR) {
-            //     std::cout << "  Supports Video Encode" << std::endl;
-            // }
-            // VkBool32 presentSupport = false;
-            // if (vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport) != VK_SUCCESS) {
-            //     throw std::runtime_error("Failed to get present surface!");
-            // }
-            // if (presentSupport) {
-            //     std::cout << "  Supports Present" << std::endl;
-            // }
-            // else {
-            //     std::cout << "  Doesn't support the surface" << std::endl;
-            // }
         }
 
-        if (graphicsQueueFamilyIndex == -1) {
+        if (graphicsQueueFamilyIndex == UINT32_MAX) {
             std::cerr << "Failed to find a graphics queue family!" << std::endl;
             return -1;
         }
@@ -988,60 +926,15 @@ int main() {
         }
         vkBindBufferMemory(device, uniformBuffer, uniformBufferMemory, 0);
     }
-    VkDescriptorSetLayout descriptorSetLayout;
+
+    Pipeline pipeline(device, swapchainExtent, renderPass);
+
+    VkDescriptorSet descriptorSet = pipeline.createDescriptorSet();
     {
-        VkDescriptorSetLayoutBinding uboLayoutBinding{};
-        uboLayoutBinding.binding = 0;
-        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboLayoutBinding.descriptorCount = 1;
-        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-        VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-        samplerLayoutBinding.binding = 1;
-        samplerLayoutBinding.descriptorCount = 1;
-        samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerLayoutBinding.pImmutableSamplers = nullptr;
-        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        std::array bindings = {uboLayoutBinding, samplerLayoutBinding};
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = bindings.size();
-        layoutInfo.pBindings = bindings.data();
-
-        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-    }
-
-    VkDescriptorSet descriptorSet;
-    {
-        std::array<VkDescriptorPoolSize, 2> poolSizes{};
-        poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        poolSizes[0].descriptorCount = 1;
-        poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[1].descriptorCount = 1;
-
-        VkDescriptorPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.poolSizeCount = poolSizes.size();
-        poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = 1;
-
-        VkDescriptorPool descriptorPool;
-        vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
-
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorSetLayout;
-
-        vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
-
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffer;
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(MVP);
-
         {
             VkWriteDescriptorSet descriptorWrite{};
             descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1070,155 +963,6 @@ int main() {
             vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
         }
     }
-
-    VkPipelineLayout pipelineLayout;
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // No push constants
-    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
-    }
-
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = createShaderModule(device, loadShader("shader.vertex.spv"));
-    vertShaderStageInfo.pName = "main"; // Entry point in the shader
-
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = createShaderModule(device, loadShader("shader.fragment.spv"));
-    fragShaderStageInfo.pName = "main"; // Entry point in the shader
-
-    VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
-
-    VkVertexInputBindingDescription bindingDescription{};
-    bindingDescription.binding = 0; // Binding index
-    bindingDescription.stride = sizeof(Vertex); // Size of each vertex
-    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // Per-vertex data
-
-    std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions = {};
-
-    // Position attribute
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0; // Corresponds to inPosition in the vertex shader
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
-    attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-    // Normal attribute
-    attributeDescriptions[1].binding = 0;
-    attributeDescriptions[1].location = 1; // inNormal
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
-    attributeDescriptions[1].offset = offsetof(Vertex, normal);
-
-    // Color attribute
-    attributeDescriptions[2].binding = 0;
-    attributeDescriptions[2].location = 2; // Corresponds to inColor in the vertex shader
-    attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
-    attributeDescriptions[2].offset = offsetof(Vertex, color);
-
-    // UV attribute
-    attributeDescriptions[3].binding = 0;
-    attributeDescriptions[3].location = 3; // Corresponds to inUV in the vertex shader
-    attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT; // vec2
-    attributeDescriptions[3].offset = offsetof(Vertex, uv);
-
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 1; // Number of bindings
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription; // Pointer to the binding descriptions
-    vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions.size(); // Number of attributes
-    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data(); // Pointer to the attribute descriptions
-
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapchainExtent.width);
-    viewport.height = static_cast<float>(swapchainExtent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = { 0, 0 };
-    scissor.extent = swapchainExtent;
-
-    VkPipelineViewportStateCreateInfo viewportState{};
-    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
-    viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
-
-    VkPipelineRasterizationStateCreateInfo rasterizer{};
-    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.depthClampEnable = VK_FALSE;
-    rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    rasterizer.depthBiasEnable = VK_FALSE;
-
-    VkPipelineMultisampleStateCreateInfo multisampling{};
-    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.blendEnable = VK_FALSE;
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-
-    VkPipelineColorBlendStateCreateInfo colorBlending{};
-    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-
-    VkPipelineDepthStencilStateCreateInfo depthStencil{};
-    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-    depthStencil.depthBoundsTestEnable = VK_FALSE;
-    depthStencil.minDepthBounds = 0.0f; // Optional
-    depthStencil.maxDepthBounds = 1.0f; // Optional
-    depthStencil.stencilTestEnable = VK_FALSE;
-    depthStencil.front = {}; // Optional
-    depthStencil.back = {}; // Optional
-
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = renderPass;
-    pipelineInfo.subpass = 0; // The index of the subpass in the render pass
-
-    VkPipeline graphicsPipeline;
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create graphics pipeline!");
-    }
-
-    // Cleanup shader modules after pipeline creation
-    vkDestroyShaderModule(device, vertShaderStageInfo.module, nullptr);
-    vkDestroyShaderModule(device, fragShaderStageInfo.module, nullptr);
 
     std::vector<VkCommandBuffer> commandBuffers(swapchainImageViews.size());
     {
@@ -1361,23 +1105,24 @@ int main() {
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = framebuffers[currentFrame]; // Framebuffer for the current image
+        renderPassInfo.framebuffer = framebuffers[currentFrame];
         renderPassInfo.renderArea.offset = { 0, 0 };
         renderPassInfo.renderArea.extent = { swapchainExtent.width, swapchainExtent.height };
 
-        std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = { 0.05f, 0.05f, 0.05f, 1.0f };
-        clearValues[1].depthStencil = {1.0f, 0};
+        std::array clearValues{
+            VkClearValue{.color={{0.05f, 0.05f, 0.05f, 1.0f}}},
+            VkClearValue{.depthStencil={1.0f, 0}}
+        };
         renderPassInfo.clearValueCount = clearValues.size();
         renderPassInfo.pClearValues = clearValues.data();
 
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
         VkBuffer vertexBuffers[] = { vertexBuffer };
         VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptorSet, 0, nullptr);
         vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
