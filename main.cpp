@@ -637,7 +637,7 @@ int main() {
         if (!supportedFeatures.samplerAnisotropy) {
             std::cout << "Sampler anisotropy is not supported!" << std::endl;
         }
-        physicalDevice = device; // Choose the first available for simplicity
+        physicalDevice = device;
         break;
     }
 
@@ -741,15 +741,6 @@ int main() {
         return -1;
     }
 
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    {
-        VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
-        if (result != VK_SUCCESS) {
-            std::cerr << "Failed to get surface capabilities!" << std::endl;
-            return -1;
-        }
-    }
-
     // Get supported formats
     uint32_t formatCount;
     {
@@ -783,6 +774,14 @@ int main() {
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
     VkPresentModeKHR selectedPresentMode = VK_PRESENT_MODE_FIFO_KHR; // Vsync mode, can also be VK_PRESENT_MODE_IMMEDIATE_KHR
 
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    {
+        VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+        if (result != VK_SUCCESS) {
+            std::cerr << "Failed to get surface capabilities!" << std::endl;
+            return -1;
+        }
+    }
     VkExtent2D swapchainExtent;
     if (surfaceCapabilities.currentExtent.width != UINT32_MAX) {
         swapchainExtent = surfaceCapabilities.currentExtent;
@@ -990,7 +989,6 @@ int main() {
         vkBindBufferMemory(device, uniformBuffer, uniformBufferMemory, 0);
     }
     VkDescriptorSetLayout descriptorSetLayout;
-    VkDescriptorSet descriptorSet;
     {
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
@@ -1012,7 +1010,10 @@ int main() {
         layoutInfo.pBindings = bindings.data();
 
         vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+    }
 
+    VkDescriptorSet descriptorSet;
+    {
         std::array<VkDescriptorPoolSize, 2> poolSizes{};
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         poolSizes[0].descriptorCount = 1;
@@ -1377,7 +1378,7 @@ int main() {
         VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-        vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0); // Draw the triangle
+        vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
