@@ -534,6 +534,20 @@ VkSampler createTextureSampler(VkDevice device, VkPhysicalDevice physicalDevice)
     return textureSampler;
 }
 
+VkBuffer createVertexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, std::vector<Vertex> const& vertices) {
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    vertexBuffer = createBuffer(device, physicalDevice, bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &vertexBufferMemory);
+    {
+        void* data = nullptr;
+        vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &data);
+        memcpy(data, vertices.data(), (size_t)bufferSize);
+        vkUnmapMemory(device, vertexBufferMemory);
+    }
+    return vertexBuffer;
+}
+
 int main() {
     uint32_t width = 1024;
     uint32_t height = 768;
@@ -890,8 +904,8 @@ int main() {
         };
         framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
         framebufferInfo.pAttachments = attachments.data();
-        framebufferInfo.width = swapchainExtent.width; // Set the framebuffer width
-        framebufferInfo.height = swapchainExtent.height; // Set the framebuffer height
+        framebufferInfo.width = swapchainExtent.width;
+        framebufferInfo.height = swapchainExtent.height;
         framebufferInfo.layers = 1;
 
         if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
@@ -900,9 +914,18 @@ int main() {
         }
     }
 
-    VkImage textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/material_color.jpeg");
-    VkImageView textureImageView = createImageView(device, textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-    VkSampler textureSampler = createTextureSampler(device, physicalDevice);
+    std::vector<VkCommandBuffer> commandBuffers(swapchainImageViews.size());
+    {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = commandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // Primary command buffers can be submitted to queues
+        allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+            std::cerr << "Failed to allocate command buffers!" << std::endl;
+            return -1;
+        }
+    }
 
     VkBuffer uniformBuffer;
     VkDeviceMemory uniformBufferMemory;
@@ -927,81 +950,99 @@ int main() {
         vkBindBufferMemory(device, uniformBuffer, uniformBufferMemory, 0);
     }
 
-    Pipeline pipeline(device, swapchainExtent, renderPass);
+    Pipeline pipeline(device, swapchainExtent, renderPass, 1024);
 
-    VkDescriptorSet descriptorSet = pipeline.createDescriptorSet();
+    struct Mesh {
+        std::vector<Vertex> vertices;
+        VkBuffer vertexBuffer;
+        VkImage textureImage;
+        VkImageView textureImageView;
+        VkSampler textureSampler;
+    };
+
+    struct Object {
+        Mesh mesh; // shared between objects
+        VkDescriptorSet descriptorSet; // supposed to have only object transform
+    };
+
+
+    Object tower{};
+    Mesh towerMesh{};
+    towerMesh.vertices = loadObj("10_15_2024.obj");
+    normalizeModel(towerMesh.vertices, 3);
+    towerMesh.vertexBuffer = createVertexBuffer(physicalDevice, device, towerMesh.vertices);
+    towerMesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/material_color.jpeg");
+    towerMesh.textureImageView = createImageView(device, towerMesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+    towerMesh.textureSampler = createTextureSampler(device, physicalDevice);
+    tower.mesh = towerMesh;
+    tower.descriptorSet = pipeline.createDescriptorSet();
     {
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffer;
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(MVP);
-        {
-            VkWriteDescriptorSet descriptorWrite{};
-            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrite.dstSet = descriptorSet;
-            descriptorWrite.dstBinding = 0;
-            descriptorWrite.dstArrayElement = 0;
-            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            descriptorWrite.descriptorCount = 1;
-            descriptorWrite.pBufferInfo = &bufferInfo;
-            vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
-        }
 
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = textureImageView;
-        imageInfo.sampler = textureSampler;
-        {
-            VkWriteDescriptorSet descriptorWrite{};
-            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrite.dstSet = descriptorSet;
-            descriptorWrite.dstBinding = 1;
-            descriptorWrite.dstArrayElement = 0;
-            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptorWrite.descriptorCount = 1;
-            descriptorWrite.pImageInfo = &imageInfo;
-            vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
-        }
-    }
+        imageInfo.imageView = towerMesh.textureImageView;
+        imageInfo.sampler = towerMesh.textureSampler;
 
-    std::vector<VkCommandBuffer> commandBuffers(swapchainImageViews.size());
-    {
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // Primary command buffers can be submitted to queues
-        allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
-        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
-            std::cerr << "Failed to allocate command buffers!" << std::endl;
-            return -1;
-        }
+        std::array writes = {
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = tower.descriptorSet,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &bufferInfo,
+            },
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = tower.descriptorSet,
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pImageInfo = &imageInfo,
+            },
+        };
+        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
     }
 
     auto body = loadObj("Model_D0702033/Body_Posed.obj");
     auto gizmo = loadObj("gizmo.obj");
     auto monkey = loadObj("monkey.obj");
-    auto tower = loadObj("10_15_2024.obj");
-    normalizeModel(tower, 3);
     auto pixar = loadObj("PIXAR light.obj");
     auto horse = loadObj("horse.obj");
 
-    std::vector<Vertex> vertices = {};
+    // std::vector<Vertex> vertices = {};
     // vertices.insert(vertices.end(), body.begin(), body.end());
     // vertices.insert(vertices.end(), gizmo.begin(), gizmo.end());
     // vertices.insert(vertices.end(), monkey.begin(), monkey.end());
-    vertices.insert(vertices.end(), tower.begin(), tower.end());
+    // vertices.insert(vertices.end(), tower.begin(), tower.end());
     // vertices.insert(vertices.end(), pixar.begin(), pixar.end());
     // vertices.insert(vertices.end(), horse.begin(), horse.end());
 
-    // { // rectangle with texture
-    //     vertices.push_back({{-1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
-    //     vertices.push_back({{1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 0}});
-    //     vertices.push_back({{1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
-    //
-    //     vertices.push_back({{1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
-    //     vertices.push_back({{-1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
-    //     vertices.push_back({{-1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
-    // }
+    Object obj2{};
+    { // rectangle with texture
+        Mesh mesh = {};
+        mesh.vertices.push_back({{-1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
+        mesh.vertices.push_back({{1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 0}});
+        mesh.vertices.push_back({{1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
+
+        mesh.vertices.push_back({{1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
+        mesh.vertices.push_back({{-1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
+        mesh.vertices.push_back({{-1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
+
+        mesh.vertexBuffer = createVertexBuffer(physicalDevice, device, mesh.vertices);
+        mesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/texture.jpg");
+        mesh.textureImageView = createImageView(device, mesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+        mesh.textureSampler = createTextureSampler(device, physicalDevice);
+        obj2.mesh = mesh;
+    }
+    obj2.descriptorSet = pipeline.createDescriptorSet();
+
 
     // { // vulkan space, where Z and goes away, X goes right and Y goes down
     //     // X axis plane
@@ -1019,17 +1060,6 @@ int main() {
     //     vertices.push_back({{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}});
     //     vertices.push_back({{1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}});
     // }
-
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-    vertexBuffer = createBuffer(device, physicalDevice, bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &vertexBufferMemory);
-    {
-        void* data = nullptr;
-        vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, vertices.data(), (size_t)bufferSize);
-        vkUnmapMemory(device, vertexBufferMemory);
-    }
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -1119,11 +1149,11 @@ int main() {
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
-        VkBuffer vertexBuffers[] = { vertexBuffer };
+        VkBuffer vertexBuffers[] = { tower.mesh.vertexBuffer };
         VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptorSet, 0, nullptr);
-        vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &tower.descriptorSet, 0, nullptr);
+        vkCmdDraw(commandBuffer, static_cast<uint32_t>(tower.mesh.vertices.size()), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 

@@ -22,10 +22,10 @@ public:
     VkPipelineLayout layout;
     VkPipeline pipeline;
 
-    explicit Pipeline(VkDevice device, VkExtent2D extent, VkRenderPass renderPass) {
+    explicit Pipeline(VkDevice device, VkExtent2D extent, VkRenderPass renderPass, uint32_t poolSize) {
         this->device = device;
         descriptorSetLayout = createDescriptorSetLayout(device);
-        descriptorPool = createDescriptorPool(device);
+        descriptorPool = createDescriptorPool(device, poolSize);
         layout = createPipelineLayout(device, descriptorSetLayout);
         pipeline = createPipeline(device, extent, renderPass, layout);
     }
@@ -71,16 +71,16 @@ private:
         return descriptorSetLayout;
     }
 
-    static VkDescriptorPool createDescriptorPool(VkDevice device) {
+    static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t poolSize) {
         std::array poolSizes = {
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=1},
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=poolSize},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=poolSize},
         };
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = poolSizes.size();
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = 1;
+        poolInfo.maxSets = poolSize;
 
         VkDescriptorPool descriptorPool;
         vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
