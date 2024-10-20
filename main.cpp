@@ -1306,6 +1306,8 @@ int main() {
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), float(width) / float(height), 0.1f, 100.0f);
     glm::mat4 view = cameraLookAt(glm::vec3(0.0f, -3.0f, -5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
     glm::mat4 model = glm::mat4(1.0f);
+    float modelAngleY{};
+    float modelScale = 1.0f;
 
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();
@@ -1329,6 +1331,11 @@ int main() {
         }
 
         vkResetFences(device, 1, &renderFences[currentFrame]);
+
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+        model = glm::rotate(model, glm::radians(modelAngleY), glm::vec3(0.0f, 1.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(modelScale));
 
         // data
         {
@@ -1427,18 +1434,11 @@ int main() {
                 running = false;
             }
             if (event.type == SDL_MOUSEMOTION) {
-                // Normalize X coordinate for yaw rotation
                 float normalizedX = static_cast<float>(event.motion.x) / width - 0.5f;
-                float angleY = -normalizedX * 360.0f * 4; // Yaw rotation based on mouse X
+                modelAngleY = -normalizedX * 360.0f * 4;
 
-                // Normalize Y coordinate for pitch rotation
-                float normalizedY = static_cast<float>(event.motion.y) / height - 0.5f;
-                float angleX = normalizedY * 300.0f; // Pitch rotation based on mouse Y (adjust sensitivity)
-
-                model = glm::mat4(1.0f);
-                model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-                model = glm::rotate(model, glm::radians(angleY), glm::vec3(0.0f, 1.0f, 0.0f));
-                model = glm::scale(model, glm::vec3(1.0f));
+                float normalizedY = static_cast<float>(event.motion.y) / height;
+                modelScale = normalizedY * 5;
             }
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
