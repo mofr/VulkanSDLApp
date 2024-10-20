@@ -18,8 +18,11 @@
 #include "Pipeline.h"
 #include "Vertex.h"
 
-struct MVP {
+struct ModelTransform {
     glm::mat4 model;
+};
+
+struct ViewProjection {
     glm::mat4 view;
     glm::mat4 projection;
 };
@@ -548,6 +551,27 @@ VkBuffer createVertexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, st
     return vertexBuffer;
 }
 
+void createUniformBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkBuffer& buffer, VkDeviceMemory& bufferMemory, VkDeviceSize bufferSize) {
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create uniform buffer!");
+    }
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate uniform buffer memory!");
+    }
+    vkBindBufferMemory(device, buffer, bufferMemory, 0);
+}
+
 int main() {
     uint32_t width = 1024;
     uint32_t height = 768;
@@ -927,30 +951,31 @@ int main() {
         }
     }
 
-    VkBuffer uniformBuffer;
-    VkDeviceMemory uniformBufferMemory;
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = sizeof(MVP);
-        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(device, &bufferInfo, nullptr, &uniformBuffer) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create uniform buffer!");
-        }
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device, uniformBuffer, &memRequirements);
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        if (vkAllocateMemory(device, &allocInfo, nullptr, &uniformBufferMemory) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to allocate uniform buffer memory!");
-        }
-        vkBindBufferMemory(device, uniformBuffer, uniformBufferMemory, 0);
-    }
-
     Pipeline pipeline(device, swapchainExtent, renderPass, 1024);
+
+    VkBuffer viewProjectionBuffer;
+    VkDeviceMemory viewProjectionBufferMemory;
+    createUniformBuffer(physicalDevice, device, viewProjectionBuffer, viewProjectionBufferMemory, sizeof(ViewProjection));
+    VkDescriptorSet viewProjectionDescriptorSet = pipeline.createDescriptorSet1();
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = viewProjectionBuffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(ViewProjection);
+
+        std::array writes = {
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = viewProjectionDescriptorSet,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &bufferInfo,
+            },
+        };
+        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+    }
 
     struct Mesh {
         std::vector<Vertex> vertices;
@@ -962,9 +987,8 @@ int main() {
 
     struct Object {
         Mesh mesh; // shared between objects
-        VkDescriptorSet descriptorSet; // supposed to have only object transform
+        VkDescriptorSet descriptorSet; // supposed to have only model transform
     };
-
 
     Object tower{};
     Mesh towerMesh{};
@@ -975,12 +999,15 @@ int main() {
     towerMesh.textureImageView = createImageView(device, towerMesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
     towerMesh.textureSampler = createTextureSampler(device, physicalDevice);
     tower.mesh = towerMesh;
-    tower.descriptorSet = pipeline.createDescriptorSet();
+    tower.descriptorSet = pipeline.createDescriptorSet0();
+    VkBuffer modelTransformBuffer;
+    VkDeviceMemory modelTransformBufferMemory;
+    createUniformBuffer(physicalDevice, device, modelTransformBuffer, modelTransformBufferMemory, sizeof(ModelTransform));
     {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = uniformBuffer;
+        bufferInfo.buffer = modelTransformBuffer;
         bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(MVP);
+        bufferInfo.range = sizeof(ModelTransform);
 
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1041,7 +1068,7 @@ int main() {
         mesh.textureSampler = createTextureSampler(device, physicalDevice);
         obj2.mesh = mesh;
     }
-    obj2.descriptorSet = pipeline.createDescriptorSet();
+    obj2.descriptorSet = pipeline.createDescriptorSet0();
 
 
     // { // vulkan space, where Z and goes away, X goes right and Y goes down
@@ -1109,16 +1136,25 @@ int main() {
         model = glm::rotate(model, glm::radians(modelAngleY), glm::vec3(0.0f, 1.0f, 0.0f));
         model = glm::scale(model, glm::vec3(modelScale));
 
-        // data
+        // frame-level data
         {
-            MVP mvp{};
-            mvp.model = model;
-            mvp.view = view;
-            mvp.projection = projection;
+            ViewProjection vp{};
+            vp.view = view;
+            vp.projection = projection;
             void* data;
-            vkMapMemory(device, uniformBufferMemory, 0, sizeof(mvp), 0, &data);
-            memcpy(data, &mvp, sizeof(mvp));
-            vkUnmapMemory(device, uniformBufferMemory);
+            vkMapMemory(device, viewProjectionBufferMemory, 0, sizeof(vp), 0, &data);
+            memcpy(data, &vp, sizeof(vp));
+            vkUnmapMemory(device, viewProjectionBufferMemory);
+        }
+
+        // object-level data
+        {
+            ModelTransform modelTransform{};
+            modelTransform.model = model;
+            void* data;
+            vkMapMemory(device, modelTransformBufferMemory, 0, sizeof(modelTransform), 0, &data);
+            memcpy(data, &modelTransform, sizeof(modelTransform));
+            vkUnmapMemory(device, modelTransformBufferMemory);
         }
 
         // record commands
@@ -1149,10 +1185,12 @@ int main() {
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 1, 1, &viewProjectionDescriptorSet, 0, nullptr);
+
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &tower.descriptorSet, 0, nullptr);
         VkBuffer vertexBuffers[] = { tower.mesh.vertexBuffer };
         VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &tower.descriptorSet, 0, nullptr);
         vkCmdDraw(commandBuffer, static_cast<uint32_t>(tower.mesh.vertices.size()), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);

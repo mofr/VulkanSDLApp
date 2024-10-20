@@ -10,8 +10,10 @@ layout(location = 1) out vec3 fragNormal;
 layout(location = 2) out vec3 fragColor;
 layout(location = 3) out vec2 fragUV;
 
-layout(set = 0, binding = 0) uniform MVP {
+layout(set = 0, binding = 0) uniform Model {
     mat4 model;
+};
+layout(set = 1, binding = 0) uniform ViewProjection {
     mat4 view;
     mat4 projection;
 };

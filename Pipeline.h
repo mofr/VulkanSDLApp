@@ -11,31 +11,46 @@ It requires a render pass with two attachments: color, depth.
 It requires specific vertex format: Vertex.
 Descriptor set layouts:
  Set 0:
-  Binding 0: UBO with MVP
+  Binding 0: UBO with Model matrix
   Binding 1: sampler
+ Set 1:
+  Binding 0: UBO with View and Projection matrices
 */
 class Pipeline {
-public:
     VkDevice device;
-    VkDescriptorSetLayout descriptorSetLayout;
     VkDescriptorPool descriptorPool;
+    VkDescriptorSetLayout descriptorSetLayout0;
+    VkDescriptorSetLayout descriptorSetLayout1;
+public:
     VkPipelineLayout layout;
     VkPipeline pipeline;
 
     explicit Pipeline(VkDevice device, VkExtent2D extent, VkRenderPass renderPass, uint32_t poolSize) {
         this->device = device;
-        descriptorSetLayout = createDescriptorSetLayout(device);
         descriptorPool = createDescriptorPool(device, poolSize);
-        layout = createPipelineLayout(device, descriptorSetLayout);
+        descriptorSetLayout0 = createDescriptorSetLayout0(device);
+        descriptorSetLayout1 = createDescriptorSetLayout1(device);
+        layout = createPipelineLayout(device, {descriptorSetLayout0, descriptorSetLayout1});
         pipeline = createPipeline(device, extent, renderPass, layout);
     }
 
-    VkDescriptorSet createDescriptorSet() {
+    VkDescriptorSet createDescriptorSet0() {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = descriptorPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorSetLayout;
+        allocInfo.pSetLayouts = &descriptorSetLayout0;
+        VkDescriptorSet descriptorSet;
+        vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
+        return descriptorSet;
+    }
+
+    VkDescriptorSet createDescriptorSet1() {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &descriptorSetLayout1;
         VkDescriptorSet descriptorSet;
         vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
         return descriptorSet;
@@ -46,7 +61,7 @@ public:
     }
 
 private:
-    static VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device) {
+    static VkDescriptorSetLayout createDescriptorSetLayout0(VkDevice device) {
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
         uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -61,6 +76,24 @@ private:
         samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
         std::array bindings = {uboLayoutBinding, samplerLayoutBinding};
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = bindings.size();
+        layoutInfo.pBindings = bindings.data();
+
+        VkDescriptorSetLayout descriptorSetLayout;
+        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+        return descriptorSetLayout;
+    }
+
+    static VkDescriptorSetLayout createDescriptorSetLayout1(VkDevice device) {
+        VkDescriptorSetLayoutBinding uboLayoutBinding{};
+        uboLayoutBinding.binding = 0;
+        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.descriptorCount = 1;
+        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        std::array bindings = {uboLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = bindings.size();
@@ -87,12 +120,12 @@ private:
         return descriptorPool;
     }
 
-    static VkPipelineLayout createPipelineLayout(VkDevice device, VkDescriptorSetLayout descriptorSetLayout) {
+    static VkPipelineLayout createPipelineLayout(VkDevice device, std::vector<VkDescriptorSetLayout> const& descriptorSetLayout) {
         VkPipelineLayout pipelineLayout;
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+        pipelineLayoutInfo.setLayoutCount = descriptorSetLayout.size();
+        pipelineLayoutInfo.pSetLayouts = descriptorSetLayout.data();
         pipelineLayoutInfo.pushConstantRangeCount = 0; // No push constants
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
