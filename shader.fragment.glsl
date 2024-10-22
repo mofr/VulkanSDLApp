@@ -7,7 +7,7 @@ layout(location = 3) in vec2 fragUV;
 
 layout(location = 0) out vec4 outColor; // Output color to the framebuffer
 
-layout(set = 0, binding = 1) uniform sampler2D texSampler;
+layout(set = 1, binding = 0) uniform sampler2D texSampler;
 
 void main() {
 //    outColor = texture(texSampler, fragUV);
@@ -23,14 +23,10 @@ void main() {
 //    outColor = vec4(normal * 0.5 + 0.5, 1.0);
 //    return;
 
-    // Calculate light direction
     vec3 lightDir = normalize(lightPos - fragPosition);
-
-    // Calculate diffuse component
     float lightIntensity = max(dot(normal, lightDir) + ambient, 0.0);
 
     vec3 textureColor = vec3(texture(texSampler, fragUV));
 
-    // Simple color based on the lighting
     outColor = vec4(textureColor * lightIntensity, 1.0); // Apply lighting
 }

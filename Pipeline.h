@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Vertex.h"
+#include "VulkanFunctions.h"
 
 /**
 The class represents a concrete Vulkan pipeline to render textured meshes.
@@ -12,45 +13,114 @@ It requires specific vertex format: Vertex.
 Descriptor set layouts:
  Set 0:
   Binding 0: UBO with Model matrix
-  Binding 1: sampler
  Set 1:
+  Binding 0: texture + sampler
+ Set 2:
   Binding 0: UBO with View and Projection matrices
 */
 class Pipeline {
+    struct ModelTransform {
+        glm::mat4 model;
+    };
+
+    struct ViewProjection {
+        glm::mat4 view;
+        glm::mat4 projection;
+    };
+
     VkDevice device;
+
     VkDescriptorPool descriptorPool;
-    VkDescriptorSetLayout descriptorSetLayout0;
-    VkDescriptorSetLayout descriptorSetLayout1;
+    VkDescriptorSetLayout descriptorSetLayoutModelTransform;
+    VkDescriptorSetLayout descriptorSetLayoutTextures;
+    VkDescriptorSetLayout descriptorSetLayoutViewProjection;
+    VkDescriptorSet descriptorSetViewProjection;
+
+    VkDeviceMemory modelTransformBufferMemory;
+    VkBuffer modelTransformBuffer;
+    std::vector<ModelTransform> modelTransforms;
+    std::vector<VkDescriptorSet> modelTransformDescriptorSets;
+
+    VkDeviceMemory viewProjectionBufferMemory;
+    VkBuffer viewProjectionBuffer;
+
 public:
     VkPipelineLayout layout;
     VkPipeline pipeline;
 
-    explicit Pipeline(VkDevice device, VkExtent2D extent, VkRenderPass renderPass, uint32_t poolSize) {
+    explicit Pipeline(VkPhysicalDevice physicalDevice, VkDevice device, VkExtent2D extent, VkRenderPass renderPass, uint32_t poolSize) {
         this->device = device;
-        descriptorPool = createDescriptorPool(device, poolSize);
-        descriptorSetLayout0 = createDescriptorSetLayout0(device);
-        descriptorSetLayout1 = createDescriptorSetLayout1(device);
-        layout = createPipelineLayout(device, {descriptorSetLayout0, descriptorSetLayout1});
+        descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
+        descriptorSetLayoutTextures = createDescriptorSetLayoutTextures(device);
+        descriptorSetLayoutViewProjection = createDescriptorSetLayoutViewProjection(device);
+        layout = createPipelineLayout(device, {descriptorSetLayoutModelTransform, descriptorSetLayoutTextures, descriptorSetLayoutViewProjection});
         pipeline = createPipeline(device, extent, renderPass, layout);
+
+        descriptorPool = createDescriptorPool(device, poolSize);
+        createUniformBuffer(physicalDevice, device, viewProjectionBuffer, viewProjectionBufferMemory, sizeof(ViewProjection));
+        createUniformBuffer(physicalDevice, device, modelTransformBuffer, modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
+        descriptorSetViewProjection = createDescriptorSetViewProjection();
+        modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
 
-    VkDescriptorSet createDescriptorSet0() {
+    struct Object {
+        glm::mat4 transformMatrix;
+
+        VkBuffer vertexBuffer;
+        uint32_t vertexBufferOffset;
+        uint32_t vertexCount;
+
+        VkDescriptorSet textureDescriptorSet;
+    };
+
+    void draw(
+        VkCommandBuffer commandBuffer,
+        glm::mat4 const& projection,
+        glm::mat4 const& view,
+        std::vector<Object> const& objects
+    ) {
+        // TODO sort by Z to reduce overdraw?
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        {
+            ViewProjection vp{};
+            vp.view = view;
+            vp.projection = projection;
+            void* data;
+            vkMapMemory(device, viewProjectionBufferMemory, 0, sizeof(vp), 0, &data);
+            memcpy(data, &vp, sizeof(vp));
+            vkUnmapMemory(device, viewProjectionBufferMemory);
+        }
+        {
+            modelTransforms.reserve(objects.size());
+            modelTransforms.clear();
+            for (auto const& object : objects) {modelTransforms.push_back({object.transformMatrix});}
+            void* data;
+            vkMapMemory(device, modelTransformBufferMemory, 0, modelTransforms.size() * sizeof(ModelTransform), 0, &data);
+            memcpy(data, modelTransforms.data(), modelTransforms.size() * sizeof(ModelTransform));
+            vkUnmapMemory(device, modelTransformBufferMemory);
+        }
+
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &descriptorSetViewProjection, 0, nullptr);
+
+        // TODO group by vertex buffer and material
+        for (uint32_t i = 0; i < objects.size(); i++) {
+            Object const& object = objects[i];
+            VkDescriptorSet transformDescriptorSet = modelTransformDescriptorSets[i];
+            std::array descriptorSets = {transformDescriptorSet, object.textureDescriptorSet};
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
+            VkBuffer vertexBuffers[] = { object.vertexBuffer };
+            VkDeviceSize offsets[] = { object.vertexBufferOffset };
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+            vkCmdDraw(commandBuffer, object.vertexCount, 1, 0, 0);
+        }
+    }
+
+    VkDescriptorSet createTextureDescriptorSet() {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = descriptorPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorSetLayout0;
-        VkDescriptorSet descriptorSet;
-        vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
-        return descriptorSet;
-    }
-
-    VkDescriptorSet createDescriptorSet1() {
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorSetLayout1;
+        allocInfo.pSetLayouts = &descriptorSetLayoutTextures;
         VkDescriptorSet descriptorSet;
         vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
         return descriptorSet;
@@ -61,21 +131,78 @@ public:
     }
 
 private:
-    static VkDescriptorSetLayout createDescriptorSetLayout0(VkDevice device) {
+    std::vector<VkDescriptorSet> createDescriptorSetsModelTransforms(uint32_t count) {
+        std::vector layouts(count, descriptorSetLayoutModelTransform);
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = count;
+        allocInfo.pSetLayouts = layouts.data();
+        std::vector<VkDescriptorSet> descriptorSets(count);
+        vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data());
+
+        {
+            std::vector<VkWriteDescriptorSet> writes;
+            std::vector<VkDescriptorBufferInfo> bufferInfos;
+            writes.reserve(count);
+            bufferInfos.reserve(count);
+            for (uint32_t i = 0; i < count; i++) {
+                VkDescriptorBufferInfo bufferInfo{};
+                bufferInfo.buffer = modelTransformBuffer;
+                bufferInfo.offset = i * sizeof(ModelTransform);
+                bufferInfo.range = sizeof(ModelTransform);
+
+                bufferInfos.push_back(bufferInfo);
+                writes.push_back(VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSets[i],
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = bufferInfos.data() + i,
+                });
+            };
+            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+        }
+        return descriptorSets;
+    }
+
+    VkDescriptorSet createDescriptorSetViewProjection() {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &descriptorSetLayoutViewProjection;
+        VkDescriptorSet descriptorSet;
+        vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
+        {
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = viewProjectionBuffer;
+            bufferInfo.offset = 0;
+            bufferInfo.range = sizeof(ViewProjection);
+            std::array writes = {VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSet,
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &bufferInfo,
+            }};
+            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+        }
+        return descriptorSet;
+    }
+
+    static VkDescriptorSetLayout createDescriptorSetLayoutModelTransform(VkDevice device) {
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
         uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         uboLayoutBinding.descriptorCount = 1;
         uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-        VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-        samplerLayoutBinding.binding = 1;
-        samplerLayoutBinding.descriptorCount = 1;
-        samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerLayoutBinding.pImmutableSamplers = nullptr;
-        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        std::array bindings = {uboLayoutBinding, samplerLayoutBinding};
+        std::array bindings = {uboLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = bindings.size();
@@ -86,7 +213,26 @@ private:
         return descriptorSetLayout;
     }
 
-    static VkDescriptorSetLayout createDescriptorSetLayout1(VkDevice device) {
+    static VkDescriptorSetLayout createDescriptorSetLayoutTextures(VkDevice device) {
+        VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+        samplerLayoutBinding.binding = 0;
+        samplerLayoutBinding.descriptorCount = 1;
+        samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        samplerLayoutBinding.pImmutableSamplers = nullptr;
+        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        std::array bindings = {samplerLayoutBinding};
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = bindings.size();
+        layoutInfo.pBindings = bindings.data();
+
+        VkDescriptorSetLayout descriptorSetLayout;
+        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+        return descriptorSetLayout;
+    }
+
+    static VkDescriptorSetLayout createDescriptorSetLayoutViewProjection(VkDevice device) {
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
         uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -106,14 +252,14 @@ private:
 
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t poolSize) {
         std::array poolSizes = {
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=poolSize},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=poolSize + 1},
             VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=poolSize},
         };
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = poolSizes.size();
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = poolSize;
+        poolInfo.maxSets = 2 * poolSize + 1;
 
         VkDescriptorPool descriptorPool;
         vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);

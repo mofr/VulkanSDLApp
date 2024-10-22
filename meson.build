@@ -34,6 +34,8 @@ VulkanSDLApp = executable(
         'VulkanSDLApp',
         [
                 'main.cpp',
+                'Pipeline.h',
+                'VulkanFunctions.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
         ],
