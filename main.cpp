@@ -589,32 +589,65 @@ int main() {
     };
 
     Object tower{};
-    Mesh towerMesh{};
-    std::vector<Vertex> towerVertices = loadObj("10_15_2024.obj");
-    normalizeModel(towerVertices, 3);
-    towerMesh.vertexBuffer = createVertexBuffer(physicalDevice, device, towerVertices);
-    towerMesh.vertexCount = towerVertices.size();
-    towerMesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/material_color.jpeg");
-    towerMesh.textureImageView = createImageView(device, towerMesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-    tower.mesh = towerMesh;
-    tower.textureDescriptorSet = pipeline.createTextureDescriptorSet();
     {
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = towerMesh.textureImageView;
-        imageInfo.sampler = textureSampler;
-        std::array writes = {
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = tower.textureDescriptorSet,
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pImageInfo = &imageInfo,
-            },
-        };
-        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+        Mesh towerMesh{};
+        std::vector<Vertex> towerVertices = loadObj("10_15_2024.obj");
+        normalizeModel(towerVertices, 3);
+        towerMesh.vertexBuffer = createVertexBuffer(physicalDevice, device, towerVertices);
+        towerMesh.vertexCount = towerVertices.size();
+        towerMesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/material_color.jpeg");
+        towerMesh.textureImageView = createImageView(device, towerMesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+        tower.mesh = towerMesh;
+        tower.textureDescriptorSet = pipeline.createTextureDescriptorSet();
+        {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageView = towerMesh.textureImageView;
+            imageInfo.sampler = textureSampler;
+            std::array writes = {
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = tower.textureDescriptorSet,
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .pImageInfo = &imageInfo,
+                },
+            };
+            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+        }
+    }
+
+    Object woodenStool{};
+    {
+        Mesh mesh{};
+        std::vector<Vertex> vertices = loadObj("wooden_stool_02_4k.obj");
+        // normalizeModel(vertices, 1);
+        mesh.vertexBuffer = createVertexBuffer(physicalDevice, device, vertices);
+        mesh.vertexCount = vertices.size();
+        mesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/wooden_stool_02_diff_4k.jpg");
+        mesh.textureImageView = createImageView(device, mesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+        woodenStool.mesh = mesh;
+        woodenStool.textureDescriptorSet = pipeline.createTextureDescriptorSet();
+        {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageView = mesh.textureImageView;
+            imageInfo.sampler = textureSampler;
+            std::array writes = {
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = woodenStool.textureDescriptorSet,
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .pImageInfo = &imageInfo,
+                },
+            };
+            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+        }
     }
 
     auto body = loadObj("Model_D0702033/Body_Posed.obj");
@@ -750,7 +783,8 @@ int main() {
             projection,
             view,
             {
-                Pipeline::Object{tower.getTransform(), tower.mesh.vertexBuffer, 0, tower.mesh.vertexCount, tower.textureDescriptorSet},
+                Pipeline::Object{woodenStool.getTransform(), woodenStool.mesh.vertexBuffer, 0, woodenStool.mesh.vertexCount, woodenStool.textureDescriptorSet},
+                // Pipeline::Object{tower.getTransform(), tower.mesh.vertexBuffer, 0, tower.mesh.vertexCount, tower.textureDescriptorSet},
                 Pipeline::Object{obj2.getTransform(), obj2.mesh.vertexBuffer, 0, obj2.mesh.vertexCount, obj2.textureDescriptorSet},
             }
         );
@@ -807,10 +841,14 @@ int main() {
             }
             if (event.type == SDL_MOUSEMOTION) {
                 float normalizedX = static_cast<float>(event.motion.x) / width - 0.5f;
-                tower.modelAngleY = -normalizedX * 360.0f * 4;
+                float cameraAngle = normalizedX * 360.0f * 4;
 
                 float normalizedY = static_cast<float>(event.motion.y) / height;
-                tower.modelScale = normalizedY * 5;
+                float zoom = 1.0f - normalizedY;
+
+                glm::vec3 cameraPos = glm::vec3(0.0f, -3.0f, -5.0f) * zoom;
+                cameraPos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec4(cameraPos, 1.0f);
+                view = cameraLookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
             }
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
