@@ -1,8 +1,10 @@
-//
-// Created by Alexander on 3.11.24..
-//
+#pragma once
 
-#ifndef MODEL_H
-#define MODEL_H
+#include <vector>
+#include <string>
+#include "Vertex.h"
 
-#endif //MODEL_H
+struct Model {
+    std::vector<Vertex> vertices;
+    std::string diffuseTexture;
+};

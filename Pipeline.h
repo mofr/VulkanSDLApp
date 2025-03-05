@@ -115,7 +115,7 @@ public:
         }
     }
 
-    VkDescriptorSet createTextureDescriptorSet() {
+    VkDescriptorSet createTextureDescriptorSet() const {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = descriptorPool;

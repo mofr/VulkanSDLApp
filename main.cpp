@@ -12,149 +12,69 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
-#include "tiny_obj_loader.h"
 #include "stb_image.h"
 
 #include "Pipeline.h"
 #include "Vertex.h"
 #include "VulkanFunctions.h"
+#include "Model.h"
+#include "ObjFile.h"
 
-void normalizeModel(std::vector<Vertex>& vertices, float size = 1) {
-    struct {glm::vec3 min; glm::vec3 max;} aabb{{999.0f, 999.0f, 999.0f}, {-999, -999, -999}};
 
-    for (const auto& v : vertices) {
-        aabb.min = glm::min(aabb.min, v.pos);
-        aabb.max = glm::max(aabb.max, v.pos);
+struct Mesh {
+    uint32_t vertexCount;
+    VkBuffer vertexBuffer;
+    VkImage textureImage;
+    VkImageView textureImageView;
+};
+
+struct Material {
+    // TODO
+};
+
+struct Object {
+    Mesh mesh; // shared between objects
+    float modelAngleY = 0.0f;
+    float modelScale = 1.0f;
+    VkDescriptorSet textureDescriptorSet;
+
+    glm::mat4 getTransform() {
+        glm::mat4 transformMatrix = glm::mat4(1.0f);
+        transformMatrix = glm::translate(transformMatrix, glm::vec3(0.0f, 0.0f, 0.0f));
+        transformMatrix = glm::rotate(transformMatrix, glm::radians(modelAngleY), glm::vec3(0.0f, 1.0f, 0.0f));
+        transformMatrix = glm::scale(transformMatrix, glm::vec3(modelScale));
+        return transformMatrix;
     }
+};
 
-    glm::vec3 center = (aabb.max + aabb.min) / 2.0f;
-    float scale = glm::min(
-        size / (aabb.max.x - aabb.min.x),
-        size / (aabb.max.y - aabb.min.y)
-    );
-    for (auto& v : vertices) {
-        v.pos -= center;
-        v.pos *= scale;
+Object transferModelToVulkan(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, VkSampler textureSampler, const Pipeline& pipeline, const Model& model) {
+    Object object{};
+    Mesh mesh{};
+    mesh.vertexBuffer = createVertexBuffer(physicalDevice, device, model.vertices);
+    mesh.vertexCount = model.vertices.size();
+    mesh.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, model.diffuseTexture.c_str());
+    mesh.textureImageView = createImageView(device, mesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+    object.mesh = mesh;
+    object.textureDescriptorSet = pipeline.createTextureDescriptorSet();
+    {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = mesh.textureImageView;
+        imageInfo.sampler = textureSampler;
+        std::array writes = {
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = object.textureDescriptorSet,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pImageInfo = &imageInfo,
+            },
+        };
+        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
     }
-}
-
-std::vector<Vertex> loadObj(const std::string& filePath) {
-    tinyobj::ObjReaderConfig reader_config;
-    reader_config.mtl_search_path = "";
-
-    tinyobj::ObjReader reader;
-
-    if (!reader.ParseFromFile(filePath, reader_config)) {
-        if (!reader.Error().empty()) {
-            std::cerr << "TinyObjReader: " << reader.Error();
-        }
-        throw std::runtime_error("failed to parse obj file!");
-    }
-
-    if (!reader.Warning().empty()) {
-        std::cout << "TinyObjReader: " << reader.Warning();
-    }
-
-    auto& attrib = reader.GetAttrib();
-    auto& shapes = reader.GetShapes();
-    auto& materials = reader.GetMaterials();
-
-    std::vector<Vertex> vertices;
-    for (size_t s = 0; s < shapes.size(); s++) {
-        size_t index_offset = 0;
-        for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
-            size_t fv = size_t(shapes[s].mesh.num_face_vertices[f]);
-
-            size_t material_index = shapes[s].mesh.material_ids[f];
-            glm::vec3 color = glm::vec3(1.0f);
-            if (material_index < materials.size()) {
-                auto diffuse = materials[material_index].diffuse;
-                color.r = diffuse[0];
-                color.g = diffuse[1];
-                color.b = diffuse[2];
-            }
-
-            bool has_normals = false;
-
-            // Loop over vertices in the face.
-            for (size_t v = 0; v < fv; v++) {
-                // access to vertex
-                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
-                tinyobj::real_t vx = attrib.vertices[3*size_t(idx.vertex_index)+0];
-                tinyobj::real_t vy = attrib.vertices[3*size_t(idx.vertex_index)+1];
-                tinyobj::real_t vz = attrib.vertices[3*size_t(idx.vertex_index)+2];
-
-                glm::vec3 normal{};
-
-                // Check if `normal_index` is zero or positive. negative = no normal data
-                if (idx.normal_index >= 0) {
-                    tinyobj::real_t nx = attrib.normals[3*size_t(idx.normal_index)+0];
-                    tinyobj::real_t ny = attrib.normals[3*size_t(idx.normal_index)+1];
-                    tinyobj::real_t nz = attrib.normals[3*size_t(idx.normal_index)+2];
-                    normal = {nx, ny, nz};
-                    has_normals = true;
-                }
-
-                glm::vec2 uv{};
-
-                // Check if `texcoord_index` is zero or positive. negative = no texcoord data
-                if (idx.texcoord_index >= 0) {
-                    tinyobj::real_t tx = attrib.texcoords[2*size_t(idx.texcoord_index)+0];
-                    tinyobj::real_t ty = attrib.texcoords[2*size_t(idx.texcoord_index)+1];
-                    uv = {tx, 1 - ty};
-                }
-
-                // Optional: vertex colors
-                // tinyobj::real_t red   = attrib.colors[3*size_t(idx.vertex_index)+0];
-                // tinyobj::real_t green = attrib.colors[3*size_t(idx.vertex_index)+1];
-                // tinyobj::real_t blue  = attrib.colors[3*size_t(idx.vertex_index)+2];
-
-                vertices.push_back({{vx, vy, vz}, normal, color, uv});
-            }
-
-            if (!has_normals) {
-                glm::vec3 v0 = vertices[index_offset].pos;
-                glm::vec3 v1 = vertices[index_offset + 1].pos;
-                glm::vec3 v2 = vertices[index_offset + 2].pos;
-
-                // Calculate the two edges of the triangle
-                glm::vec3 edge1 = v1 - v0;
-                glm::vec3 edge2 = v2 - v0;
-
-                // Calculate the normal using the cross product
-                glm::vec3 normal = glm::normalize(glm::cross(edge1, edge2));
-                vertices[index_offset].normal = normal;
-                vertices[index_offset + 1].normal = normal;
-                vertices[index_offset + 2].normal = normal;
-            }
-
-            index_offset += fv;
-        }
-    }
-
-    // In .obj forward direction is -Z. In my code forward direction is Z.
-    // Need to inverse Z for all vertices and normals. And ensure that the vertex order remain clockwise.
-    // In Vulkan Y goes down. In Obj - up.
-    for (auto& v : vertices) {
-        v.pos.z *= -1;
-        v.pos.y *= -1;
-        v.normal.z *= -1;
-        v.normal.y *= -1;
-    }
-    for (size_t i = 0; i < vertices.size() - 2; i += 3){
-        glm::vec3& v0 = vertices[i].pos;
-        glm::vec3& v1 = vertices[i + 1].pos;
-        glm::vec3& v2 = vertices[i + 2].pos;
-
-        glm::vec3 intendedNormal = vertices[0].normal;
-        glm::vec3 computedNormal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
-
-        if (computedNormal != intendedNormal) {
-            std::swap(v1, v2);
-        }
-    }
-
-    return vertices;
+    return object;
 }
 
 glm::mat4 cameraLookAt(glm::vec3 const& eye, glm::vec3 const& center, glm::vec3 const& up)
@@ -562,99 +482,11 @@ int main() {
 
     Pipeline pipeline(physicalDevice, device, swapchainExtent, renderPass, 1024);
 
-    struct Mesh {
-        uint32_t vertexCount;
-        VkBuffer vertexBuffer;
-        VkImage textureImage;
-        VkImageView textureImageView;
-    };
+    Model woodenStoolModel = loadObj("wooden_stool_02_4k.obj");
+    Object woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
 
-    struct Material {
-        // TODO
-    };
-
-    struct Object {
-        Mesh mesh; // shared between objects
-        float modelAngleY = 0.0f;
-        float modelScale = 1.0f;
-        VkDescriptorSet textureDescriptorSet;
-
-        glm::mat4 getTransform() {
-            glm::mat4 transformMatrix = glm::mat4(1.0f);
-            transformMatrix = glm::translate(transformMatrix, glm::vec3(0.0f, 0.0f, 0.0f));
-            transformMatrix = glm::rotate(transformMatrix, glm::radians(modelAngleY), glm::vec3(0.0f, 1.0f, 0.0f));
-            transformMatrix = glm::scale(transformMatrix, glm::vec3(modelScale));
-            return transformMatrix;
-        }
-    };
-
-    Object tower{};
-    {
-        Mesh towerMesh{};
-        std::vector<Vertex> towerVertices = loadObj("10_15_2024.obj");
-        normalizeModel(towerVertices, 3);
-        towerMesh.vertexBuffer = createVertexBuffer(physicalDevice, device, towerVertices);
-        towerMesh.vertexCount = towerVertices.size();
-        towerMesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/material_color.jpeg");
-        towerMesh.textureImageView = createImageView(device, towerMesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-        tower.mesh = towerMesh;
-        tower.textureDescriptorSet = pipeline.createTextureDescriptorSet();
-        {
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = towerMesh.textureImageView;
-            imageInfo.sampler = textureSampler;
-            std::array writes = {
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = tower.textureDescriptorSet,
-                    .dstBinding = 0,
-                    .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 1,
-                    .pImageInfo = &imageInfo,
-                },
-            };
-            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
-        }
-    }
-
-    Object woodenStool{};
-    {
-        Mesh mesh{};
-        std::vector<Vertex> vertices = loadObj("wooden_stool_02_4k.obj");
-        // normalizeModel(vertices, 1);
-        mesh.vertexBuffer = createVertexBuffer(physicalDevice, device, vertices);
-        mesh.vertexCount = vertices.size();
-        mesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/wooden_stool_02_diff_4k.jpg");
-        mesh.textureImageView = createImageView(device, mesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-        woodenStool.mesh = mesh;
-        woodenStool.textureDescriptorSet = pipeline.createTextureDescriptorSet();
-        {
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = mesh.textureImageView;
-            imageInfo.sampler = textureSampler;
-            std::array writes = {
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = woodenStool.textureDescriptorSet,
-                    .dstBinding = 0,
-                    .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 1,
-                    .pImageInfo = &imageInfo,
-                },
-            };
-            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
-        }
-    }
-
-    auto body = loadObj("Model_D0702033/Body_Posed.obj");
-    auto gizmo = loadObj("gizmo.obj");
-    auto monkey = loadObj("monkey.obj");
-    auto pixar = loadObj("PIXAR light.obj");
-    auto horse = loadObj("horse.obj");
+    Model hildaPlaneModel = loadObj("hilda.obj");
+    Object hildaPlane = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, hildaPlaneModel);
 
     Object obj2{};
     { // rectangle with texture
@@ -667,50 +499,8 @@ int main() {
         vertices.push_back({{-1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
-        Mesh mesh = {};
-        mesh.vertexBuffer = createVertexBuffer(physicalDevice, device, vertices);
-        mesh.vertexCount = vertices.size();
-        mesh.textureImage = createTextureImage(physicalDevice, device, commandPool, graphicsQueue, "textures/texture.jpg");
-        mesh.textureImageView = createImageView(device, mesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-        obj2.mesh = mesh;
+        obj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, {vertices, "textures/texture.jpg"});
     }
-    obj2.textureDescriptorSet = pipeline.createTextureDescriptorSet();
-    {
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = obj2.mesh.textureImageView;
-        imageInfo.sampler = textureSampler;
-        std::array writes = {
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = obj2.textureDescriptorSet,
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pImageInfo = &imageInfo,
-            },
-        };
-        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
-    }
-
-
-    // { // vulkan space, where Z and goes away, X goes right and Y goes down
-    //     // X axis plane
-    //     vertices.push_back({{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}});
-    //     vertices.push_back({{0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}});
-    //     vertices.push_back({{0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}});
-    //
-    //     // Y axis plane
-    //     vertices.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
-    //     vertices.push_back({{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
-    //     vertices.push_back({{0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
-    //
-    //     // Z axis plane
-    //     vertices.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}});
-    //     vertices.push_back({{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}});
-    //     vertices.push_back({{1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}});
-    // }
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -784,8 +574,8 @@ int main() {
             view,
             {
                 Pipeline::Object{woodenStool.getTransform(), woodenStool.mesh.vertexBuffer, 0, woodenStool.mesh.vertexCount, woodenStool.textureDescriptorSet},
-                // Pipeline::Object{tower.getTransform(), tower.mesh.vertexBuffer, 0, tower.mesh.vertexCount, tower.textureDescriptorSet},
                 Pipeline::Object{obj2.getTransform(), obj2.mesh.vertexBuffer, 0, obj2.mesh.vertexCount, obj2.textureDescriptorSet},
+                // Pipeline::Object{hildaPlane.getTransform(), hildaPlane.mesh.vertexBuffer, 0, hildaPlane.mesh.vertexCount, hildaPlane.textureDescriptorSet},
             }
         );
         vkCmdEndRenderPass(commandBuffer);

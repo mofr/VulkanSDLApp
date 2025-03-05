@@ -30,12 +30,14 @@ dependencies = [
         shaders_dep,
 ]
 
-VulkanSDLApp = executable(
+app = executable(
         'VulkanSDLApp',
         [
                 'main.cpp',
                 'Pipeline.h',
                 'VulkanFunctions.h',
+                'ObjFile.h',
+                'Model.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
         ],
@@ -44,4 +46,4 @@ VulkanSDLApp = executable(
         include_directories: ['3rdparty'],
 )
 
-test('test', VulkanSDLApp)
+test('test', app)
