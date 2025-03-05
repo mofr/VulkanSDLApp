@@ -92,7 +92,7 @@ Model loadObj(const std::string& filePath) {
                 if (idx.texcoord_index >= 0) {
                     tinyobj::real_t tx = attrib.texcoords[2*size_t(idx.texcoord_index)+0];
                     tinyobj::real_t ty = attrib.texcoords[2*size_t(idx.texcoord_index)+1];
-                    uv = {tx, 1 - ty};
+                    uv = {tx, ty};
                 }
 
                 // Optional: vertex colors
@@ -133,12 +133,12 @@ Model loadObj(const std::string& filePath) {
         v.normal.y *= -1;
     }
     for (size_t i = 0; i < vertices.size() - 2; i += 3){
-        glm::vec3& v0 = vertices[i].pos;
-        glm::vec3& v1 = vertices[i + 1].pos;
-        glm::vec3& v2 = vertices[i + 2].pos;
+        Vertex& v0 = vertices[i];
+        Vertex& v1 = vertices[i + 1];
+        Vertex& v2 = vertices[i + 2];
 
         glm::vec3 intendedNormal = vertices[0].normal;
-        glm::vec3 computedNormal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+        glm::vec3 computedNormal = glm::normalize(glm::cross(v1.pos - v0.pos, v2.pos - v0.pos));
 
         if (computedNormal != intendedNormal) {
             std::swap(v1, v2);

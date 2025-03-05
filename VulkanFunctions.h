@@ -345,6 +345,8 @@ void copyBufferToImage(VkDevice device, VkCommandPool commandPool, VkQueue queue
 }
 
 VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, const char * filename) {
+    // flip image to match glsl expectations
+    stbi_set_flip_vertically_on_load_thread(true);
     int texWidth, texHeight, texChannels;
     stbi_uc* pixels = stbi_load(filename, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
