@@ -10,23 +10,13 @@ layout(location = 0) out vec4 outColor;
 layout(set = 1, binding = 0) uniform sampler2D texSampler;
 
 void main() {
-//    outColor = texture(texSampler, fragUV);
-//    return;
-
-//    outColor = vec4(fragColor, 1.0);
-//    return;
-
     vec3 lightPos = vec3(0.0, -3.0, -5.0);
     float ambient = 0.05;
 
     vec3 normal = normalize(fragNormal);
-//    outColor = vec4(normal * 0.5 + 0.5, 1.0);
-//    return;
-
     vec3 lightDir = normalize(lightPos - fragPosition);
-    float lightIntensity = max(dot(normal, lightDir) + ambient, 0.0);
-
+    float lightIntensity = max(dot(normal, lightDir), 0.0);
+    lightIntensity = ambient + lightIntensity * (1 - ambient);
     vec3 textureColor = vec3(texture(texSampler, fragUV));
-
     outColor = vec4(textureColor * lightIntensity, 1.0);
 }
