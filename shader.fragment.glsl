@@ -11,12 +11,17 @@ layout(set = 1, binding = 0) uniform sampler2D texSampler;
 
 void main() {
     vec3 lightPos = vec3(0.0, -3.0, -5.0);
-    float ambient = 0.05;
+    float ambient = 0.04;
+    vec3 textureColor = vec3(texture(texSampler, fragUV));
+    textureColor = pow(textureColor, vec3(2.2)); // Convert to linear space from sRGB
 
     vec3 normal = normalize(fragNormal);
     vec3 lightDir = normalize(lightPos - fragPosition);
     float lightIntensity = max(dot(normal, lightDir), 0.0);
     lightIntensity = ambient + lightIntensity * (1 - ambient);
-    vec3 textureColor = vec3(texture(texSampler, fragUV));
-    outColor = vec4(textureColor * lightIntensity, 1.0);
+    vec3 resultColor = textureColor * lightIntensity;
+
+    resultColor = pow(resultColor, vec3(1 / 2.2)); // Apply sRGB gamma correction
+
+    outColor = vec4(resultColor, 1.0);
 }
