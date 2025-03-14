@@ -19,6 +19,7 @@
 #include "VulkanFunctions.h"
 #include "Model.h"
 #include "ObjFile.h"
+#include "CameraController.h"
 
 
 struct Mesh {
@@ -75,28 +76,6 @@ Object transferModelToVulkan(VkPhysicalDevice physicalDevice, VkDevice device, V
         vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
     }
     return object;
-}
-
-glm::mat4 cameraLookAt(glm::vec3 const& eye, glm::vec3 const& center, glm::vec3 const& up)
-{
-    glm::vec3 f(normalize(center - eye));
-    glm::vec3 r(normalize(cross(f, up)));
-    glm::vec3 u(cross(f, r));
-
-    glm::mat4 result(1);
-    result[0][0] = r.x;
-    result[1][0] = r.y;
-    result[2][0] = r.z;
-    result[0][1] = u.x;
-    result[1][1] = u.y;
-    result[2][1] = u.z;
-    result[0][2] = f.x;
-    result[1][2] = f.y;
-    result[2][2] = f.z;
-    result[3][0] = -dot(r, eye);
-    result[3][1] = -dot(u, eye);
-    result[3][2] = -dot(f, eye);
-    return result;
 }
 
 int main() {
@@ -517,7 +496,7 @@ int main() {
     }
 
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), float(width) / float(height), 0.1f, 100.0f);
-    glm::mat4 view = cameraLookAt(glm::vec3(0.0f, -3.0f, -5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+    auto cameraController = CameraController(width, height, glm::vec3(0.0f, -3.0f, -5.0f));
 
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();
@@ -571,7 +550,7 @@ int main() {
         pipeline.draw(
             commandBuffer,
             projection,
-            view,
+            cameraController.getView(),
             {
                 Pipeline::Object{woodenStool.getTransform(), woodenStool.mesh.vertexBuffer, 0, woodenStool.mesh.vertexCount, woodenStool.textureDescriptorSet},
                 Pipeline::Object{obj2.getTransform(), obj2.mesh.vertexBuffer, 0, obj2.mesh.vertexCount, obj2.textureDescriptorSet},
@@ -629,22 +608,12 @@ int main() {
             if (event.type == SDL_QUIT) {
                 running = false;
             }
-            if (event.type == SDL_MOUSEMOTION) {
-                float normalizedX = static_cast<float>(event.motion.x) / width - 0.5f;
-                float cameraAngle = normalizedX * 360.0f * 4;
-
-                float normalizedY = static_cast<float>(event.motion.y) / height;
-                float zoom = 1.0f - normalizedY;
-
-                glm::vec3 cameraPos = glm::vec3(0.0f, -3.0f, -5.0f) * zoom;
-                cameraPos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec4(cameraPos, 1.0f);
-                view = cameraLookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-            }
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
                     running = false;
                 }
             }
+            cameraController.update(event);
         }
 
         currentFrame = (currentFrame + 1) % maxFramesInFlight;
