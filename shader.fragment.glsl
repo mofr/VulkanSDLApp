@@ -14,7 +14,7 @@ const float specularHardness = 500.0;
 const float specularPower = 5.0;
 
 void main() {
-    vec3 lightPos = vec3(0.0, -3.0, -5.0);
+    vec3 lightPos = vec3(0.0, 3.0, 5.0);
     float ambient = 0.04;
     vec3 textureColor = vec3(texture(texSampler, fragUV));
 

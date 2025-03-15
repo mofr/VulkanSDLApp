@@ -39,7 +39,7 @@ app = executable(
                 'ObjFile.h',
                 'Model.h',
                 'CameraController.h',
-                'cameraLookAt.h',
+                'CameraFunctions.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
         ],

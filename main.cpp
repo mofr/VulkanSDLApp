@@ -464,19 +464,16 @@ int main() {
     Model woodenStoolModel = loadObj("wooden_stool_02_4k.obj");
     Object woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
 
-    Model hildaPlaneModel = loadObj("hilda.obj");
-    Object hildaPlane = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, hildaPlaneModel);
-
     Object obj2{};
     { // rectangle with texture
         std::vector<Vertex> vertices;
-        vertices.push_back({{-1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
-        vertices.push_back({{1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 0}});
-        vertices.push_back({{1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
+        vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
+        vertices.push_back({{1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 0}});
+        vertices.push_back({{1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
 
-        vertices.push_back({{1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
-        vertices.push_back({{-1.0f, 0, -1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
-        vertices.push_back({{-1.0f, 0, 1.0f}, {0, -1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
+        vertices.push_back({{1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 1}});
+        vertices.push_back({{-1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
+        vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
         obj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, {vertices, "textures/texture.jpg"});
     }
@@ -496,7 +493,7 @@ int main() {
     }
 
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), float(width) / float(height), 0.1f, 100.0f);
-    auto cameraController = CameraController(width, height, glm::vec3(0.0f, -3.0f, -5.0f));
+    auto cameraController = CameraController(width, height, glm::vec3(0.0f, 3.0f, 5.0f));
 
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();

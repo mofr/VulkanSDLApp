@@ -1,13 +1,17 @@
 #pragma once
 
-#include <glm/glm.hpp>
+#include <glm/vec3.hpp>
+#include <glm/mat4x4.hpp>
 
-glm::mat4 cameraLookAt(glm::vec3 const& eye, glm::vec3 const& center, glm::vec3 const& up)
+/*
+Returns view matrix.
+TODO describe handedness and other conventions used here.
+*/
+glm::mat4 cameraLookAt(glm::vec3 const& eye, glm::vec3 const& target, glm::vec3 const& up)
 {
-    glm::vec3 f(normalize(center - eye));
+    glm::vec3 f(normalize(target - eye));
     glm::vec3 r(normalize(cross(f, up)));
     glm::vec3 u(cross(f, r));
-
     glm::mat4 result(1);
     result[0][0] = r.x;
     result[1][0] = r.y;

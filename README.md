@@ -6,13 +6,13 @@ Then the fragPosition is transformed to a clip space by applying view and projec
 
 https://johannesugb.github.io/gpu-programming/setting-up-a-proper-vulkan-projection-matrix/
 
-World space, logical coordinates
---------------------------------
-Left-handed coordinate system (LHS).
+World space, logical coordinates (project-specific)
+---------------------------------------------------
+Right-handed coordinate system (RHS).
 
 X goes right.
 Y goes up.
-Forward direction is Z.
+Forward direction is -Z.
 
 Vulkan Normalized Device Coordinates (NDC)
 ------------------------------------------
@@ -42,7 +42,21 @@ I haven't found any specification which would confirm it, but most files I've se
 
 glm
 ---
-glm assumes right-handed coordinates, so I use GLM_FORCE_LEFT_HANDED to work with world coordinates.
+Extremely useful explanation on glm logic: https://community.khronos.org/t/confused-when-using-glm-for-projection/108548/4
+
+glm assumes right-handed coordinates.
+
+glm does a handedness swap due to a historical reasons to act as a drop-in replacement for opengl functions glOrtho and GlFrustum.
+
+The usual orthographic or perspective projection matrix generated with glm::ortho or glm::perspective (or glOrtho, glFrustum) inverts the z-axis leading to a handedness swap.
+
+Since I don't want to follow the hidden rule of the handedness swap, I use my own functions to build view and projection matrices.
+
+Front face
+----------
+During rasterization vulkan needs to know if we are looking at the front face of at the back face.
+
+Vertex winding order in the framebuffer space is used to decide the face orientation.
 
 Textures
 --------

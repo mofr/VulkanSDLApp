@@ -123,27 +123,5 @@ Model loadObj(const std::string& filePath) {
         }
     }
 
-    // In .obj forward direction is -Z. In my code forward direction is Z.
-    // Need to inverse Z for all vertices and normals. And ensure that the vertex order remain clockwise.
-    // In Vulkan Y goes down. In Obj - up.
-    for (auto& v : vertices) {
-        v.pos.z *= -1;
-        v.pos.y *= -1;
-        v.normal.z *= -1;
-        v.normal.y *= -1;
-    }
-    for (size_t i = 0; i < vertices.size() - 2; i += 3){
-        Vertex& v0 = vertices[i];
-        Vertex& v1 = vertices[i + 1];
-        Vertex& v2 = vertices[i + 2];
-
-        glm::vec3 intendedNormal = vertices[0].normal;
-        glm::vec3 computedNormal = glm::normalize(glm::cross(v1.pos - v0.pos, v2.pos - v0.pos));
-
-        if (computedNormal != intendedNormal) {
-            std::swap(v1, v2);
-        }
-    }
-
     return {vertices, diffuseTexture};
 }
