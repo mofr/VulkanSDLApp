@@ -27,7 +27,7 @@ public:
     }
 
     glm::mat4 getView() {
-        return cameraLookAt(pos, lookAtPos, up);
+        return cameraLookAt(pos, lookAtPos);
     }
 
 private:

@@ -4,15 +4,44 @@ Coordinate systems
 fragPosition is in the world coordinates and calculated by applying model transform matrix.
 Then the fragPosition is transformed to a clip space by applying view and projection transformations.
 
+
+m = model space coordinates
+
+w = world space coordinates
+
+v = view space coordinates
+
+c = clip space coordinates
+
+
+M - model matrix to transform model space coordinates to world space. M = TRS (from right to left: scale, rotate, translate).
+
+V - view matrix to transform world space coordinates to view space. Calculated as inverse of the camera TRS matrix.
+
+P - projection matrix to transform view space coordinates to clip space. Perspective is applied here.
+
+
+w = M * m
+
+v = V * w
+
+c = P * v
+
 https://johannesugb.github.io/gpu-programming/setting-up-a-proper-vulkan-projection-matrix/
+https://www.vincentparizet.com/blog/posts/vulkan_perspective_matrix/
 
 World space, logical coordinates (project-specific)
 ---------------------------------------------------
 Right-handed coordinate system (RHS).
 
-X goes right.
-Y goes up.
-Forward direction is -Z.
+View/camera space
+-----------------
+Right-handed coordinate system (RHS).
+
+Camera view is aligned with clip space, which means:
+- Camera right vector is X (1, 0, 0)
+- Camera up vector is Y (0, 1, 0)
+- Camera forward vector is -Z (0, 0, -1)
 
 Vulkan Normalized Device Coordinates (NDC)
 ------------------------------------------
@@ -22,11 +51,11 @@ X = -1..1
 Y = -1..1
 Z = 0..1
 
+Everything else is clipped.
+
 X goes right.
 Y goes down.
 Forward direction is Z.
-
-Everything else is clipped.
 
 GLM_FORCE_DEPTH_ZERO_TO_ONE is used to follow the convention.
 
@@ -44,13 +73,13 @@ glm
 ---
 Extremely useful explanation on glm logic: https://community.khronos.org/t/confused-when-using-glm-for-projection/108548/4
 
-glm assumes right-handed coordinates.
+glm assumes right-handed coordinates by default.
 
-glm does a handedness swap due to a historical reasons to act as a drop-in replacement for opengl functions glOrtho and GlFrustum.
+glm does a handedness swap due to a historical reasons to act as a drop-in replacement for opengl functions glOrtho and glFrustum.
 
 The usual orthographic or perspective projection matrix generated with glm::ortho or glm::perspective (or glOrtho, glFrustum) inverts the z-axis leading to a handedness swap.
 
-Since I don't want to follow the hidden rule of the handedness swap, I use my own functions to build view and projection matrices.
+Since I don't want to follow the "hidden" rule of the handedness swap, I use my own functions to build view and projection matrices.
 
 Front face
 ----------

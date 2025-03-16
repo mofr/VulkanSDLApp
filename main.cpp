@@ -7,8 +7,6 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_metal.h>
 
-#define GLM_FORCE_LEFT_HANDED
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
@@ -492,8 +490,8 @@ int main() {
         vkCreateFence(device, &fenceInfo, nullptr, &renderFences[i]);
     }
 
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), float(width) / float(height), 0.1f, 100.0f);
-    auto cameraController = CameraController(width, height, glm::vec3(0.0f, 3.0f, 5.0f));
+    glm::mat4 projection = perspectiveProjection(glm::radians(45.0f), float(width) / float(height), 0.1f, 100.0f);
+    CameraController cameraController(width, height, glm::vec3(0.0f, 3.0f, 5.0f));
 
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();
