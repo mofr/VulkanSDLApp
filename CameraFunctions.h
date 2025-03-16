@@ -38,6 +38,8 @@ The projection matrix is used to transform from camera/eye space to clip space.
 It's built for RHS coordinates.
 Input: view space, X right, Y up, -Z away.
 Output: clip space, X right, Y down, Z away.
+Z=-zFar is projected to Z=1
+Z=-zNear is projected to Z=0
 */
 glm::mat4 perspectiveProjection(float verticalFov, float aspectRatio, float zNear, float zFar) {
     float focalLength = 1.0f / std::tan(verticalFov / 2.0f);
