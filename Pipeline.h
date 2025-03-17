@@ -94,6 +94,7 @@ public:
             vp.view = view;
             vp.projection = projection;
             void* data;
+            // TODO use persistently mapped buffers instead
             vkMapMemory(device, viewProjectionBufferMemory, 0, sizeof(vp), 0, &data);
             memcpy(data, &vp, sizeof(vp));
             vkUnmapMemory(device, viewProjectionBufferMemory);
