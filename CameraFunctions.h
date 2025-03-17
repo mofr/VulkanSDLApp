@@ -34,10 +34,10 @@ glm::mat4 cameraLookAt(glm::vec3 const& eye, glm::vec3 const& target, glm::vec3 
 
 /*
 Return projection matrix.
-The projection matrix is used to transform from camera/eye space to clip space.
+The projection matrix is used to transform coordinates from camera/eye/view space to clip space.
 It's built for RHS coordinates.
 Input: view space, X right, Y up, -Z away.
-Output: clip space, X right, Y down, Z away.
+Output: clip space, X right, Y down, Z away. Defined by Vulkan.
 Z=-zFar is projected to Z=1
 Z=-zNear is projected to Z=0
 */

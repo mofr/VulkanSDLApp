@@ -1,5 +1,5 @@
-- Implement view and projection matrices without glm usage to avoid implicit handedness swap and GLM_FORCE_LEFT_HANDED definitions.
 - Render light as a small sphere with white emission
+- Write some tests for view and projection matrices to ensure view space is actually conform to what is described in README and docstrings.
 - Learn quaternions
 - Implement Camera class
 - Implement WASD controller for the camera

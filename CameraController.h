@@ -17,23 +17,23 @@ public:
     void update(const SDL_Event & event) {
         if (event.type == SDL_MOUSEMOTION) {
             float normalizedX = static_cast<float>(event.motion.x) / windowWidth - 0.5f;
-            float cameraAngle = -normalizedX * 360.0f * 4;
+            cameraAngle = -normalizedX * 360.0f * 4;
 
             float normalizedY = static_cast<float>(event.motion.y) / windowHeight;
-            float zoom = 1.0f - normalizedY;
-
-            pos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), up) * glm::vec4(initialPos * zoom, 1.0f);
+            zoom = 1.0f - normalizedY;
         }
     }
 
     glm::mat4 getView() {
+        glm::vec3 pos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), up) * glm::vec4(initialPos * zoom, 1.0f);
         return cameraLookAt(pos, lookAtPos);
     }
 
 private:
     int windowWidth;
     int windowHeight;
+    float cameraAngle = 0;
+    float zoom = 1.0f;
     glm::vec3 initialPos;
-    glm::vec3 pos;
     glm::vec3 lookAtPos;
 };
