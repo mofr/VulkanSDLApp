@@ -1,5 +1,7 @@
 - Render light as a small sphere with white emission
+- Pass light coordinates to shader (currently it's hardcoded in the fragment shader)
 - Write some tests for view and projection matrices to ensure view space is actually conform to what is described in README and docstrings.
 - Learn quaternions
 - Implement Camera class
 - Implement WASD controller for the camera
+- Clean up resource directories

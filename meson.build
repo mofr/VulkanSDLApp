@@ -40,6 +40,7 @@ app = executable(
                 'Model.h',
                 'CameraController.h',
                 'CameraFunctions.h',
+                'MeshObject.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
         ],

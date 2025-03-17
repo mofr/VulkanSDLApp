@@ -9,9 +9,10 @@ layout(location = 4) in vec3 cameraPos;
 layout(location = 0) out vec4 outColor;
 
 layout(set = 1, binding = 0) uniform sampler2D texSampler;
-
-const float specularHardness = 500.0;
-const float specularPower = 5.0;
+layout(set = 1, binding = 1) uniform MaterialProps {
+    float specularHardness;
+    float specularPower;
+};
 
 void main() {
     vec3 lightPos = vec3(0.0, 3.0, 5.0);

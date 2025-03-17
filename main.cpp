@@ -20,63 +20,7 @@
 #include "Model.h"
 #include "ObjFile.h"
 #include "CameraController.h"
-
-
-struct Mesh {
-    uint32_t vertexCount;
-    VkBuffer vertexBuffer;
-    VkImage textureImage;
-    VkImageView textureImageView;
-};
-
-struct Material {
-    // TODO
-};
-
-struct Object {
-    Mesh mesh; // shared between objects
-    float modelAngleY = 0.0f;
-    float modelScale = 1.0f;
-    VkDescriptorSet textureDescriptorSet;
-
-    glm::mat4 getTransform() {
-        glm::mat4 transformMatrix = glm::mat4(1.0f);
-        transformMatrix = glm::translate(transformMatrix, glm::vec3(0.0f, 0.0f, 0.0f));
-        transformMatrix = glm::rotate(transformMatrix, glm::radians(modelAngleY), glm::vec3(0.0f, 1.0f, 0.0f));
-        transformMatrix = glm::scale(transformMatrix, glm::vec3(modelScale));
-        return transformMatrix;
-    }
-};
-
-Object transferModelToVulkan(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, VkSampler textureSampler, const Pipeline& pipeline, const Model& model) {
-    Object object{};
-    Mesh mesh{};
-    mesh.vertexBuffer = createVertexBuffer(physicalDevice, device, model.vertices);
-    mesh.vertexCount = model.vertices.size();
-    mesh.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, model.diffuseTexture.c_str());
-    mesh.textureImageView = createImageView(device, mesh.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-    object.mesh = mesh;
-    object.textureDescriptorSet = pipeline.createTextureDescriptorSet();
-    {
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = mesh.textureImageView;
-        imageInfo.sampler = textureSampler;
-        std::array writes = {
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = object.textureDescriptorSet,
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pImageInfo = &imageInfo,
-            },
-        };
-        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
-    }
-    return object;
-}
+#include "MeshObject.h"
 
 int main() {
     uint32_t width = 1024;
@@ -462,9 +406,11 @@ int main() {
     Pipeline pipeline(physicalDevice, device, swapchainExtent, renderPass, 1024);
 
     Model woodenStoolModel = loadObj("wooden_stool_02_4k.obj");
-    Object woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
+    woodenStoolModel.specularHardness = 500;
+    woodenStoolModel.specularPower = 5;
+    MeshObject woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
 
-    Object obj2{};
+    MeshObject obj2{};
     { // rectangle with texture
         std::vector<Vertex> vertices;
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
@@ -475,7 +421,8 @@ int main() {
         vertices.push_back({{-1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
-        obj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, {vertices, "textures/texture.jpg"});
+        Model model{vertices, "textures/texture.jpg", .specularHardness=50, .specularPower=1};
+        obj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
     }
 
     VkSemaphoreCreateInfo semaphoreInfo{};
@@ -549,9 +496,8 @@ int main() {
             projection,
             cameraController.getView(),
             {
-                Pipeline::Object{woodenStool.getTransform(), woodenStool.mesh.vertexBuffer, 0, woodenStool.mesh.vertexCount, woodenStool.textureDescriptorSet},
-                Pipeline::Object{obj2.getTransform(), obj2.mesh.vertexBuffer, 0, obj2.mesh.vertexCount, obj2.textureDescriptorSet},
-                // Pipeline::Object{hildaPlane.getTransform(), hildaPlane.mesh.vertexBuffer, 0, hildaPlane.mesh.vertexCount, hildaPlane.textureDescriptorSet},
+                Pipeline::Object{woodenStool.getTransform(), woodenStool.vertexBuffer, 0, woodenStool.vertexCount, woodenStool.material},
+                Pipeline::Object{obj2.getTransform(), obj2.vertexBuffer, 0, obj2.vertexCount, obj2.material},
             }
         );
         vkCmdEndRenderPass(commandBuffer);

@@ -7,4 +7,6 @@
 struct Model {
     std::vector<Vertex> vertices;
     std::string diffuseTexture;
+    float specularHardness;
+    float specularPower;
 };
