@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CameraFunctions.h"
+#include "Camera.h"
 
 class CameraController
 {
@@ -14,19 +14,18 @@ public:
         this->lookAtPos = lookAtPos;
     }
 
-    void update(const SDL_Event & event) {
+    void update(Camera & camera, const SDL_Event & event) {
         if (event.type == SDL_MOUSEMOTION) {
             float normalizedX = static_cast<float>(event.motion.x) / windowWidth - 0.5f;
             cameraAngle = -normalizedX * 360.0f * 4;
 
             float normalizedY = static_cast<float>(event.motion.y) / windowHeight;
             zoom = 1.0f - normalizedY;
-        }
-    }
 
-    glm::mat4 getView() {
-        glm::vec3 pos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), up) * glm::vec4(initialPos * zoom, 1.0f);
-        return cameraLookAt(pos, lookAtPos);
+            glm::vec3 pos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), up) * glm::vec4(initialPos * zoom, 1.0f);
+            camera.setPosition(pos);
+            camera.lookAt(lookAtPos);
+        }
     }
 
 private:

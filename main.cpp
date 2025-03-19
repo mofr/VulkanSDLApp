@@ -18,6 +18,7 @@
 #include "Vertex.h"
 #include "VulkanFunctions.h"
 #include "Model.h"
+#include "Camera.h"
 #include "ObjFile.h"
 #include "CameraController.h"
 #include "MeshObject.h"
@@ -439,7 +440,8 @@ int main() {
         vkCreateFence(device, &fenceInfo, nullptr, &renderFences[i]);
     }
 
-    glm::mat4 projection = perspectiveProjection(glm::radians(45.0f), float(width) / float(height), 0.1f, 100.0f);
+    Camera camera;
+    camera.setAspectRatio(float(width) / float(height));
     CameraController cameraController(width, height, glm::vec3(0.0f, 3.0f, 5.0f));
 
     typedef std::chrono::steady_clock Clock;
@@ -493,8 +495,8 @@ int main() {
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         pipeline.draw(
             commandBuffer,
-            projection,
-            cameraController.getView(),
+            camera.getProjectionMatrix(),
+            camera.getViewMatrix(),
             {
                 Pipeline::Object{woodenStool.getTransform(), woodenStool.vertexBuffer, 0, woodenStool.vertexCount, woodenStool.material},
                 Pipeline::Object{obj2.getTransform(), obj2.vertexBuffer, 0, obj2.vertexCount, obj2.material},
@@ -556,7 +558,7 @@ int main() {
                     running = false;
                 }
             }
-            cameraController.update(event);
+            cameraController.update(camera, event);
         }
 
         currentFrame = (currentFrame + 1) % maxFramesInFlight;
