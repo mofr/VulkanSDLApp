@@ -48,6 +48,7 @@ Model loadObj(const std::string& filePath) {
     std::string diffuseTexture;
     if (materials.size() > 0) {
         diffuseTexture = materials[0].diffuse_texname;
+        std::cout << diffuseTexture << std::endl;
     }
 
     std::vector<Vertex> vertices;

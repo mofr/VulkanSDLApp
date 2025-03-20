@@ -24,7 +24,7 @@ MeshObject transferModelToVulkan(VkPhysicalDevice physicalDevice, VkDevice devic
     MeshObject object{};
     object.vertexBuffer = createVertexBuffer(physicalDevice, device, model.vertices);
     object.vertexCount = model.vertices.size();
-    object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, model.diffuseTexture.c_str());
+    object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, "resources/" + model.diffuseTexture);
     object.textureImageView = createImageView(device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
     object.material = pipeline.createMaterial(object.textureImageView, textureSampler, model.specularHardness, model.specularPower);
     return object;

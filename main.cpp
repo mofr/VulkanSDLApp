@@ -408,7 +408,7 @@ int main() {
 
     Pipeline pipeline(physicalDevice, device, swapchainExtent, renderPass, 1024);
 
-    Model woodenStoolModel = loadObj("wooden_stool_02_4k.obj");
+    Model woodenStoolModel = loadObj("resources/wooden_stool_02_4k.obj");
     woodenStoolModel.specularHardness = 500;
     woodenStoolModel.specularPower = 5;
     MeshObject woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);

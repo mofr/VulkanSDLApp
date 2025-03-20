@@ -344,13 +344,13 @@ private:
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertShaderStageInfo.module = createShaderModule(device, loadFile("shader.vertex.spv"));
+        vertShaderStageInfo.module = createShaderModule(device, loadFile("build/shader.vertex.spv"));
         vertShaderStageInfo.pName = "main"; // Entry point in the shader
 
         VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
         fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragShaderStageInfo.module = createShaderModule(device, loadFile("shader.fragment.spv"));
+        fragShaderStageInfo.module = createShaderModule(device, loadFile("build/shader.fragment.spv"));
         fragShaderStageInfo.pName = "main"; // Entry point in the shader
 
         VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };

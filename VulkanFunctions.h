@@ -344,14 +344,14 @@ void copyBufferToImage(VkDevice device, VkCommandPool commandPool, VkQueue queue
     endSingleTimeCommands(device, commandPool, queue, commandBuffer);
 }
 
-VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, const char * filename) {
+VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, std::string const& filename) {
     // flip image to match glsl expectations
     stbi_set_flip_vertically_on_load_thread(true);
     int texWidth, texHeight, texChannels;
-    stbi_uc* pixels = stbi_load(filename, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
     if (!pixels) {
-        throw std::runtime_error("failed to load texture image!");
+        throw std::runtime_error(std::string("failed to load texture image! ") + filename);
     }
 
     VkDeviceMemory stagingBufferMemory;
