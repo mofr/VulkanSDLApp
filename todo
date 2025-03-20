@@ -1,4 +1,3 @@
 - Render light as a small sphere with white emission
 - Pass light coordinates to shader (currently it's hardcoded in the fragment shader)
-- Implement WASD controller for the camera
 - Clean up resource directories

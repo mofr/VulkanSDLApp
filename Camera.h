@@ -18,9 +18,25 @@ public:
         glm::quat orientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),  // Identity quaternion
         float fov = 45.0f,
         float aspectRatio = 16.0f/9.0f,
-        float nearPlane = 0.1f,
+        float nearPlane = 0.01f,
         float farPlane = 100.0f
     ): position(position), orientation(orientation), fov(fov), aspectRatio(aspectRatio), nearPlane(nearPlane), farPlane(farPlane) {
+    }
+
+    void setPosition(const glm::vec3& newPosition) {
+        position = newPosition;
+    }
+
+    void setAspectRatio(float newAspectRatio) {
+        aspectRatio = newAspectRatio;
+    }
+
+    glm::vec3 getForward() const {
+        return orientation * glm::vec3(0, 0, -1);
+    }
+
+    glm::vec3 getRight() const {
+        return orientation * glm::vec3(1, 0, 0);
     }
 
     /*
@@ -62,11 +78,25 @@ public:
         orientation = glm::quatLookAt(normalize(target - position), up);
     }
 
-    void setPosition(const glm::vec3& newPosition) {
-        position = newPosition;
+    void rotateAroundAxis(const glm::vec3& axis, float angle) {
+        glm::quat rotation = glm::angleAxis(glm::radians(angle), glm::normalize(axis));
+        orientation = rotation * orientation;
+        orientation = glm::normalize(orientation);  // Renormalize to prevent drift
     }
 
-    void setAspectRatio(float newAspectRatio) {
-        aspectRatio = newAspectRatio;
+    void moveForward(float distance) {
+        move(getForward(), distance);
+    }
+
+    void moveRight(float distance) {
+        move(getRight(), distance);
+    }
+
+    void moveUp(float distance) {
+        move({0, 1, 0}, distance);
+    }
+
+    void move(glm::vec3 const& axis, float distance) {
+        position += distance * axis;
     }
 };

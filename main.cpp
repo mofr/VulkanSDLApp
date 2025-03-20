@@ -20,8 +20,10 @@
 #include "Model.h"
 #include "Camera.h"
 #include "ObjFile.h"
-#include "CameraController.h"
 #include "MeshObject.h"
+#include "OrbitCameraController.h"
+#include "FlyingCameraController.h"
+
 
 int main() {
     uint32_t width = 1024;
@@ -442,7 +444,12 @@ int main() {
 
     Camera camera;
     camera.setAspectRatio(float(width) / float(height));
-    CameraController cameraController(width, height, glm::vec3(0.0f, 3.0f, 5.0f));
+    camera.setPosition({0.0f, 1.0f, 2.0f});
+    camera.lookAt({0, 0, 0});
+    OrbitCameraController orbitCameraController(width, height, glm::vec3(0.0f, 3.0f, 5.0f));
+    FlyingCameraController flyingCameraController;
+    CameraController* cameraController = &flyingCameraController;
+    SDL_SetRelativeMouseMode(SDL_TRUE);
 
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();
@@ -557,9 +564,16 @@ int main() {
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
                     running = false;
                 }
+                if (event.key.keysym.sym == SDLK_1) {
+                    cameraController = &flyingCameraController;
+                }
+                if (event.key.keysym.sym == SDLK_2) {
+                    cameraController = &orbitCameraController;
+                }
             }
-            cameraController.update(camera, event);
+            cameraController->update(camera, event, dt);
         }
+        cameraController->update(camera, dt);
 
         currentFrame = (currentFrame + 1) % maxFramesInFlight;
     }

@@ -5,34 +5,6 @@
 class CameraController
 {
 public:
-    static constexpr glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-    CameraController(int windowWidth, int windowHeight, glm::vec3 initialPos): 
-        windowWidth(windowWidth), windowHeight(windowHeight), initialPos(initialPos) {}
-
-    void lookAt(glm::vec3 lookAtPos) {
-        this->lookAtPos = lookAtPos;
-    }
-
-    void update(Camera & camera, const SDL_Event & event) {
-        if (event.type == SDL_MOUSEMOTION) {
-            float normalizedX = static_cast<float>(event.motion.x) / windowWidth - 0.5f;
-            cameraAngle = -normalizedX * 360.0f * 4;
-
-            float normalizedY = static_cast<float>(event.motion.y) / windowHeight;
-            zoom = 1.0f - normalizedY;
-
-            glm::vec3 pos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), up) * glm::vec4(initialPos * zoom, 1.0f);
-            camera.setPosition(pos);
-            camera.lookAt(lookAtPos);
-        }
-    }
-
-private:
-    int windowWidth;
-    int windowHeight;
-    float cameraAngle = 0;
-    float zoom = 1.0f;
-    glm::vec3 initialPos;
-    glm::vec3 lookAtPos;
+    virtual void update(Camera& camera, SDL_Event const& event, float deltaTime) = 0;
+    virtual void update(Camera& camera, float deltaTime) = 0;
 };
