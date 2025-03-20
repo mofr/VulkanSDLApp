@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <vulkan/vulkan.h>
+#include "ImageFunctions.h"
 
 uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;
@@ -345,25 +346,16 @@ void copyBufferToImage(VkDevice device, VkCommandPool commandPool, VkQueue queue
 }
 
 VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, std::string const& filename) {
-    // flip image to match glsl expectations
-    stbi_set_flip_vertically_on_load_thread(true);
-    int texWidth, texHeight, texChannels;
-    stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-
-    if (!pixels) {
-        throw std::runtime_error(std::string("failed to load texture image! ") + filename);
-    }
+    ImageData imageData = loadImage(filename);
 
     VkDeviceMemory stagingBufferMemory;
-    VkDeviceSize imageSize = texWidth * texHeight * 4;
-    VkBuffer stagingBuffer = createBuffer(device, physicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &stagingBufferMemory);
+    VkBuffer stagingBuffer = createBuffer(device, physicalDevice, imageData.dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &stagingBufferMemory);
     {
         void* data;
-        vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
-        memcpy(data, pixels, static_cast<size_t>(imageSize));
+        vkMapMemory(device, stagingBufferMemory, 0, imageData.dataSize, 0, &data);
+        memcpy(data, imageData.data.get(), imageData.dataSize);
         vkUnmapMemory(device, stagingBufferMemory);
     }
-    stbi_image_free(pixels);
 
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
@@ -371,8 +363,8 @@ VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkC
     createImage(
         physicalDevice,
         device,
-        texWidth,
-        texHeight,
+        imageData.width,
+        imageData.height,
         VK_FORMAT_R8G8B8A8_SRGB,
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
@@ -382,7 +374,7 @@ VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkC
     );
 
     transitionImageLayout(device, commandPool, queue, textureImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(device, commandPool, queue, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+    copyBufferToImage(device, commandPool, queue, stagingBuffer, textureImage, static_cast<uint32_t>(imageData.width), static_cast<uint32_t>(imageData.height));
     transitionImageLayout(device, commandPool, queue, textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vkDestroyBuffer(device, stagingBuffer, nullptr);

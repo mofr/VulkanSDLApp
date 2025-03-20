@@ -1,2 +1,3 @@
 - Render light as a small sphere with white emission
 - Pass light coordinates to shader (currently it's hardcoded in the fragment shader)
+- Reduce main function size

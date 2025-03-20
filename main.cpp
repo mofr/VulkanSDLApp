@@ -12,8 +12,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 
-#include "stb_image.h"
-
 #include "Pipeline.h"
 #include "Vertex.h"
 #include "VulkanFunctions.h"

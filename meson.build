@@ -1,4 +1,4 @@
-project('VulkanSDLApp', 'cpp',
+project('VulkanSDLApp', 'cpp', 'c',
         version : '1.0.0',
         default_options : ['warning_level=3', 'cpp_std=c++20'])
 
@@ -36,6 +36,7 @@ app = executable(
                 'main.cpp',
                 'Pipeline.h',
                 'VulkanFunctions.h',
+                'ImageFunctions.h',
                 'ObjFile.h',
                 'Model.h',
                 'Camera.h',
@@ -45,6 +46,8 @@ app = executable(
                 'MeshObject.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
+                '3rdparty/tinyexr.cc',
+                '3rdparty/miniz.c',
         ],
         install : true,
         dependencies: dependencies,
