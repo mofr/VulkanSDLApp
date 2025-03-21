@@ -29,11 +29,22 @@ ImageData loadImage(std::string const& filename) {
             
             throw std::runtime_error(std::string("failed to load texture image! ") + filename);
         }
+        size_t dataSize = static_cast<size_t>(width * height * 4);
+        uint8_t *rgba8 = (uint8_t*) malloc(dataSize);
+        int i = 0;
+        int stride = width * 4;
+        for (int y = height - 1; y >= 0; --y) {
+            int offset = y * stride;
+            for (int x = 0; x < stride; ++x, ++i) {
+                rgba8[offset + x] = static_cast<uint8_t> (rgba[i] * 255);
+            }
+        }
+        free(rgba);
         
         ImageData result;
-        result.data.reset(rgba);
-        result.dataSize = static_cast<size_t>(width * height * sizeof(float));
-        result.imageFormat = VK_FORMAT_R8G8B8A8_SRGB;
+        result.data.reset(rgba8);
+        result.dataSize = dataSize;
+        result.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
         result.width = width;
         result.height = height;
         return result;
