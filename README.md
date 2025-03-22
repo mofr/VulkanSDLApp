@@ -97,9 +97,12 @@ Vertex winding order in the framebuffer space is used to decide the face orienta
 
 Textures
 --------
+
 **obj file vt**
 
-The origin at the lower-left corner, meaning the Y-axis (or 't' coordinate) increases from bottom to top
+The origin at the lower-left corner, meaning the Y-axis (or 't' coordinate) increases from bottom to top.
+
+I inverse V value during loading to match with images top-to-bottom layout.
 
 **stb_image**
 
@@ -107,8 +110,12 @@ The pixel data consists of *y scanlines of *x pixels, with each pixel consisting
 
 **VkImage**
 
-Has the same image layout as stb_image by default, but Y axis orientation is unclear.
+I haven't found any specification regarding this, I think that it works in tandem with shaders, where increasing vertical coordinate (V/S/Y) leads to increasing memory access address.
 
 **glsl**
 
-The origin of texture coordinates for a sampler2D is at the bottom-left corner, with the Y-axis increasing upward.
+I haven't found any specification regarding this, I think that it works in tandem with image layout, where increasing vertical coordinate (V/S/Y) leads to increasing memory access address.
+
+**gltf**
+
+In gltf texture coordinates assume the top-left corner as the origin.

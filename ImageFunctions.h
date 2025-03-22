@@ -31,13 +31,8 @@ ImageData loadImage(std::string const& filename) {
         }
         size_t dataSize = static_cast<size_t>(width * height * 4);
         uint8_t *rgba8 = (uint8_t*) malloc(dataSize);
-        int i = 0;
-        int stride = width * 4;
-        for (int y = height - 1; y >= 0; --y) {
-            int offset = y * stride;
-            for (int x = 0; x < stride; ++x, ++i) {
-                rgba8[offset + x] = static_cast<uint8_t> (rgba[i] * 255);
-            }
+        for (int i = 0; i < dataSize; ++i) {
+            rgba8[i] = static_cast<uint8_t> (rgba[i] * 255);
         }
         free(rgba);
         
@@ -50,8 +45,6 @@ ImageData loadImage(std::string const& filename) {
         return result;
     }
     else {
-        // flip image to match glsl expectations
-        stbi_set_flip_vertically_on_load_thread(true);
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
