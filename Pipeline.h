@@ -29,11 +29,6 @@ class Pipeline {
         glm::mat4 projection;
     };
 
-    struct MaterialProps {
-        float specularHardness;
-        float specularPower;
-    };
-
     VkPhysicalDevice physicalDevice;
     VkDevice device;
 
@@ -81,6 +76,12 @@ public:
         VkDescriptorSet material;
     };
 
+    struct MaterialProps {
+        glm::vec3 diffuseColor{1.0f, 1.0f, 1.0f};
+        float specularHardness = 1.0f;
+        float specularPower = 1.0f;
+    };
+
     void draw(
         VkCommandBuffer commandBuffer,
         glm::mat4 const& projection,
@@ -124,12 +125,11 @@ public:
         }
     }
 
-    VkDescriptorSet createMaterial(VkImageView textureImageView, VkSampler textureSampler, float specularHardness, float specularPower) {
+    VkDescriptorSet createMaterial(VkImageView textureImageView, VkSampler textureSampler, MaterialProps const& props) {
         VkDeviceMemory materialPropsBufferMemory;
         VkBuffer materialPropsBuffer;
         createUniformBuffer(physicalDevice, device, materialPropsBuffer, materialPropsBufferMemory, sizeof(MaterialProps));
         {
-            MaterialProps props{.specularHardness=specularHardness, .specularPower=specularPower};
             void* data;
             vkMapMemory(device, materialPropsBufferMemory, 0, sizeof(props), 0, &data);
             memcpy(data, &props, sizeof(props));

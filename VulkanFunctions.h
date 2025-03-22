@@ -345,9 +345,7 @@ void copyBufferToImage(VkDevice device, VkCommandPool commandPool, VkQueue queue
     endSingleTimeCommands(device, commandPool, queue, commandBuffer);
 }
 
-VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, std::string const& filename) {
-    ImageData imageData = loadImage(filename);
-
+VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, ImageData const& imageData) {
     VkDeviceMemory stagingBufferMemory;
     VkBuffer stagingBuffer = createBuffer(device, physicalDevice, imageData.dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &stagingBufferMemory);
     {
@@ -381,4 +379,9 @@ VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkC
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 
     return textureImage;
+}
+
+VkImage createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, std::string const& filename) {
+    ImageData imageData = loadImage(filename);
+    return createTextureImage(physicalDevice, device, commandPool, queue, imageData);
 }

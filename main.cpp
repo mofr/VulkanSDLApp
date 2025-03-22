@@ -422,7 +422,8 @@ int main() {
         vertices.push_back({{-1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
-        Model model{vertices, "textures/texture.jpg", .specularHardness=50, .specularPower=1};
+        Model model{vertices, "", .specularHardness=50, .specularPower=1};
+        model.diffuseColor = {0.5f, 0.5f, 0.5f};
         obj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
     }
 

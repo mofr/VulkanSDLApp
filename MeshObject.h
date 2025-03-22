@@ -24,8 +24,29 @@ MeshObject transferModelToVulkan(VkPhysicalDevice physicalDevice, VkDevice devic
     MeshObject object{};
     object.vertexBuffer = createVertexBuffer(physicalDevice, device, model.vertices);
     object.vertexCount = model.vertices.size();
-    object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, "resources/" + model.diffuseTexture);
+    if (model.diffuseTexture.empty()) {
+        ImageData whitePixel;
+        uint8_t * whitePixelData = (uint8_t*) malloc(4);
+        whitePixelData[0] = 255;
+        whitePixelData[1] = 255;
+        whitePixelData[2] = 255;
+        whitePixelData[3] = 255;
+        whitePixel.data.reset((void*) whitePixelData);
+        whitePixel.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+        whitePixel.dataSize = 4;
+        whitePixel.width = 1;
+        whitePixel.height = 1;
+        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, whitePixel);
+    }
+    else {
+        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, "resources/" + model.diffuseTexture);
+    }
     object.textureImageView = createImageView(device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-    object.material = pipeline.createMaterial(object.textureImageView, textureSampler, model.specularHardness, model.specularPower);
+    Pipeline::MaterialProps materialProps{
+        .diffuseColor = model.diffuseColor,
+        .specularHardness = model.specularHardness,
+        .specularPower = model.specularPower,
+    };
+    object.material = pipeline.createMaterial(object.textureImageView, textureSampler, materialProps);
     return object;
 }

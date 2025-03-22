@@ -8,8 +8,9 @@ layout(location = 4) in vec3 cameraPos;
 
 layout(location = 0) out vec4 outColor;
 
-layout(set = 1, binding = 0) uniform sampler2D texSampler;
+layout(set = 1, binding = 0) uniform sampler2D diffuseTexture;
 layout(set = 1, binding = 1) uniform MaterialProps {
+    vec3 diffuseColor;
     float specularHardness;
     float specularPower;
 };
@@ -17,7 +18,7 @@ layout(set = 1, binding = 1) uniform MaterialProps {
 void main() {
     vec3 lightPos = vec3(0.0, 3.0, 5.0);
     float ambient = 0.04;
-    vec3 textureColor = vec3(texture(texSampler, fragUV));
+    vec3 textureColor = vec3(texture(diffuseTexture, fragUV)) * diffuseColor;
 
     vec3 N = normalize(fragNormal);
     vec3 L = normalize(lightPos - fragPosition);
