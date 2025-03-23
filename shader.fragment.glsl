@@ -20,7 +20,8 @@ layout(set = 1, binding = 1) uniform MaterialProps {
 
 void main() {
     vec3 lightPos = vec3(0.0, 1.0, 2.0);
-    float ambient = 0.04;
+    vec3 lightDiffuseFactor = vec3(1.0, 0.9, 0.8);
+    vec3 ambient = vec3(0.04, 0.04, 0.07);
     vec3 diffuseColor = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
 
     vec3 N = normalize(fragNormal);
@@ -30,8 +31,8 @@ void main() {
     float NdotH = dot(N, H);
     float NdotL = dot(N, L);
 	float specularIntensity = pow(max(NdotH, 0.0), specularHardness) * specularPower;
-    float diffuseIntensity = max(NdotL, 0.0);
-    diffuseIntensity = ambient + diffuseIntensity * (1 - ambient);
-    diffuseIntensity += diffuseIntensity * specularIntensity;
-    outColor = vec4(diffuseColor * diffuseIntensity + emitFactor, 1.0);
+    vec3 lightDiffuse = lightDiffuseFactor * max(NdotL, 0.0);
+    lightDiffuse = ambient + lightDiffuse * (1 - ambient);
+    lightDiffuse += lightDiffuse * specularIntensity;
+    outColor = vec4(diffuseColor * lightDiffuse + emitFactor, 1.0);
 }
