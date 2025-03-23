@@ -19,6 +19,7 @@
 #include "Camera.h"
 #include "ObjFile.h"
 #include "MeshObject.h"
+#include "MeshFunctions.h"
 #include "OrbitCameraController.h"
 #include "FlyingCameraController.h"
 
@@ -82,7 +83,6 @@ int main() {
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    std::cout << "Found " << deviceCount << " Physical devices" << std::endl;
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
@@ -411,6 +411,13 @@ int main() {
     woodenStoolModel.specularPower = 5;
     MeshObject woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
 
+    Model lightSphereModel;
+    lightSphereModel.vertices = createSphereMesh(2, 0.05);
+    lightSphereModel.diffuseFactor = glm::vec3{0.0f};
+    lightSphereModel.emitFactor = glm::vec3{1.0f};
+    MeshObject lightSphereObj = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightSphereModel);
+    lightSphereObj.position = {0.0f, 1.0f, 2.0f};
+
     MeshObject obj2{};
     { // rectangle with texture
         std::vector<Vertex> vertices;
@@ -423,7 +430,7 @@ int main() {
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
         Model model{vertices, "", .specularHardness=50, .specularPower=1};
-        model.diffuseColor = {0.5f, 0.5f, 0.5f};
+        model.diffuseFactor = {0.5f, 0.5f, 0.5f};
         obj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
     }
 
@@ -506,6 +513,7 @@ int main() {
             {
                 Pipeline::Object{woodenStool.getTransform(), woodenStool.vertexBuffer, 0, woodenStool.vertexCount, woodenStool.material},
                 Pipeline::Object{obj2.getTransform(), obj2.vertexBuffer, 0, obj2.vertexCount, obj2.material},
+                Pipeline::Object{lightSphereObj.getTransform(), lightSphereObj.vertexBuffer, 0, lightSphereObj.vertexCount, lightSphereObj.material},
             }
         );
         vkCmdEndRenderPass(commandBuffer);

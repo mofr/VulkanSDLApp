@@ -37,6 +37,7 @@ app = executable(
                 'Pipeline.h',
                 'VulkanFunctions.h',
                 'ImageFunctions.h',
+                'MeshFunctions.h',
                 'ObjFile.h',
                 'Model.h',
                 'Camera.h',

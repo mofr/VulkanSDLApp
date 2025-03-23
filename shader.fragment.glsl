@@ -10,15 +10,18 @@ layout(location = 0) out vec4 outColor;
 
 layout(set = 1, binding = 0) uniform sampler2D diffuseTexture;
 layout(set = 1, binding = 1) uniform MaterialProps {
-    vec3 diffuseColor;
+    vec3 diffuseFactor;
+    float _padding1;
+    vec3 emitFactor;
+    float _padding2;
     float specularHardness;
     float specularPower;
 };
 
 void main() {
-    vec3 lightPos = vec3(0.0, 3.0, 5.0);
+    vec3 lightPos = vec3(0.0, 1.0, 2.0);
     float ambient = 0.04;
-    vec3 textureColor = vec3(texture(diffuseTexture, fragUV)) * diffuseColor;
+    vec3 diffuseColor = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
 
     vec3 N = normalize(fragNormal);
     vec3 L = normalize(lightPos - fragPosition);
@@ -30,5 +33,5 @@ void main() {
     float diffuseIntensity = max(NdotL, 0.0);
     diffuseIntensity = ambient + diffuseIntensity * (1 - ambient);
     diffuseIntensity += diffuseIntensity * specularIntensity;
-    outColor = vec4(textureColor * diffuseIntensity, 1.0);
+    outColor = vec4(diffuseColor * diffuseIntensity + emitFactor, 1.0);
 }

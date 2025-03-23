@@ -3,6 +3,7 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 #include "ImageFunctions.h"
+#include "Vertex.h"
 
 uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;

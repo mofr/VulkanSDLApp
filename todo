@@ -1,4 +1,5 @@
-- Render light as a small sphere with white emission
 - Pass light coordinates to shader (currently it's hardcoded in the fragment shader)
+- Add light color
+- Animate lights (position and color/intensity)
 - Reduce main function size
 - Implement normal mapping

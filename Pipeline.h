@@ -77,7 +77,10 @@ public:
     };
 
     struct MaterialProps {
-        glm::vec3 diffuseColor{1.0f, 1.0f, 1.0f};
+        glm::vec3 diffuseFactor{1.0f};
+        float _padding1;
+        glm::vec3 emitFactor{0.0f};
+        float _padding2;
         float specularHardness = 1.0f;
         float specularPower = 1.0f;
     };

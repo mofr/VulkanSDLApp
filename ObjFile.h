@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <iostream>
 #include <tiny_obj_loader.h>
 #include "Vertex.h"
@@ -46,9 +47,11 @@ Model loadObj(const std::string& filePath) {
     auto& materials = reader.GetMaterials();
 
     std::string diffuseTexture;
+    std::string normalTexture;
     if (materials.size() > 0) {
-        diffuseTexture = materials[0].diffuse_texname;
-        std::cout << diffuseTexture << std::endl;
+        std::filesystem::path parent = std::filesystem::path(filePath).parent_path();
+        diffuseTexture = parent / materials[0].diffuse_texname;
+        normalTexture = parent / materials[0].normal_texname;
     }
 
     std::vector<Vertex> vertices;
@@ -125,5 +128,5 @@ Model loadObj(const std::string& filePath) {
         }
     }
 
-    return {vertices, diffuseTexture};
+    return {vertices, diffuseTexture, normalTexture};
 }

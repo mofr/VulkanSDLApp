@@ -11,9 +11,11 @@ struct MeshObject {
     float modelScale = 1.0f;
     VkDescriptorSet material;
 
+    glm::vec3 position;
+
     glm::mat4 getTransform() {
         glm::mat4 transformMatrix = glm::mat4(1.0f);
-        transformMatrix = glm::translate(transformMatrix, glm::vec3(0.0f, 0.0f, 0.0f));
+        transformMatrix = glm::translate(transformMatrix, position);
         transformMatrix = glm::rotate(transformMatrix, glm::radians(modelAngleY), glm::vec3(0.0f, 1.0f, 0.0f));
         transformMatrix = glm::scale(transformMatrix, glm::vec3(modelScale));
         return transformMatrix;
@@ -39,11 +41,12 @@ MeshObject transferModelToVulkan(VkPhysicalDevice physicalDevice, VkDevice devic
         object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, whitePixel);
     }
     else {
-        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, "resources/" + model.diffuseTexture);
+        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, model.diffuseTexture);
     }
     object.textureImageView = createImageView(device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
     Pipeline::MaterialProps materialProps{
-        .diffuseColor = model.diffuseColor,
+        .diffuseFactor = model.diffuseFactor,
+        .emitFactor = model.emitFactor,
         .specularHardness = model.specularHardness,
         .specularPower = model.specularPower,
     };
