@@ -18,21 +18,37 @@ layout(set = 1, binding = 1) uniform MaterialProps {
     float specularPower;
 };
 
+struct Light {
+    vec3 pos;
+    float _padding1;
+    vec3 diffuseFactor;
+    float _padding2;
+};
+
+layout(set = 2, binding = 1) uniform LightBlock {
+    Light lights[8];
+    int lightCount;
+};
+
 void main() {
-    vec3 lightPos = vec3(0.0, 1.0, 2.0);
-    vec3 lightDiffuseFactor = vec3(1.0, 0.9, 0.8);
     vec3 ambient = vec3(0.04, 0.04, 0.07);
     vec3 diffuseColor = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
-
     vec3 N = normalize(fragNormal);
-    vec3 L = normalize(lightPos - fragPosition);
     vec3 viewDir = normalize(cameraPos - fragPosition);
-    vec3 H = normalize(L + viewDir);
-    float NdotH = dot(N, H);
-    float NdotL = dot(N, L);
-	float specularIntensity = pow(max(NdotH, 0.0), specularHardness) * specularPower;
-    vec3 lightDiffuse = lightDiffuseFactor * max(NdotL, 0.0);
-    lightDiffuse = ambient + lightDiffuse * (1 - ambient);
-    lightDiffuse += lightDiffuse * specularIntensity;
+
+    vec3 lightDiffuse = vec3(0);
+    for (int i = 0; i < lightCount; ++i) {
+        vec3 lightPos = lights[i].pos;
+        vec3 lightDiffuseFactor = lights[i].diffuseFactor;
+        vec3 L = normalize(lightPos - fragPosition);
+        vec3 H = normalize(L + viewDir);
+        float NdotH = dot(N, H);
+        float NdotL = dot(N, L);
+        float specularIntensity = pow(max(NdotH, 0.0), specularHardness) * specularPower;
+        vec3 diffuseContribution = lightDiffuseFactor * max(NdotL, 0.0);
+        lightDiffuse += diffuseContribution + diffuseContribution * specularIntensity;
+    }
+
+    lightDiffuse += ambient;
     outColor = vec4(diffuseColor * lightDiffuse + emitFactor, 1.0);
 }

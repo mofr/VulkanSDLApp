@@ -1,5 +1,4 @@
-- Pass light coordinates to shader (currently it's hardcoded in the fragment shader)
-- Add light color
+- Prettier uniform buffers copies (placement new?)
 - Animate lights (position and color/intensity)
 - Reduce main function size
 - Implement normal mapping

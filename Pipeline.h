@@ -14,10 +14,11 @@ Descriptor set layouts:
  Set 0:
   Binding 0: UBO with Model matrix
  Set 1:
-  Binding 0: texture + sampler
+  Binding 0: diffuse texture + sampler
   Binding 1: UBO material props
  Set 2:
   Binding 0: UBO with View and Projection matrices
+  Binding 1: UBO lights
 */
 class Pipeline {
     struct ModelTransform {
@@ -46,6 +47,9 @@ class Pipeline {
     VkDeviceMemory viewProjectionBufferMemory;
     VkBuffer viewProjectionBuffer;
 
+    VkDeviceMemory lightBlockBufferMemory;
+    VkBuffer lightBlockBuffer;
+
 public:
     VkPipelineLayout layout;
     VkPipeline pipeline;
@@ -62,6 +66,7 @@ public:
         descriptorPool = createDescriptorPool(device, poolSize);
         createUniformBuffer(physicalDevice, device, viewProjectionBuffer, viewProjectionBufferMemory, sizeof(ViewProjection));
         createUniformBuffer(physicalDevice, device, modelTransformBuffer, modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
+        createUniformBuffer(physicalDevice, device, lightBlockBuffer, lightBlockBufferMemory, sizeof(LightBlock));
         descriptorSetViewProjection = createDescriptorSetViewProjection();
         modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
@@ -85,11 +90,24 @@ public:
         float specularPower = 1.0f;
     };
 
+    struct Light {
+        glm::vec3 pos;
+        float _padding1;
+        glm::vec3 diffuseFactor;
+        float _padding2;
+    };
+
+    struct LightBlock {
+        Light lights[8];
+        int lightCount;
+    };
+
     void draw(
         VkCommandBuffer commandBuffer,
         glm::mat4 const& projection,
         glm::mat4 const& view,
-        std::vector<Object> const& objects
+        std::vector<Object> const& objects,
+        std::vector<Light> const& lights
     ) {
         // TODO sort by Z to reduce overdraw?
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
@@ -97,11 +115,22 @@ public:
             ViewProjection vp{};
             vp.view = view;
             vp.projection = projection;
-            void* data;
             // TODO use persistently mapped buffers instead
+            void* data;
             vkMapMemory(device, viewProjectionBufferMemory, 0, sizeof(vp), 0, &data);
             memcpy(data, &vp, sizeof(vp));
             vkUnmapMemory(device, viewProjectionBufferMemory);
+        }
+        {
+            LightBlock lightBlock{};
+            lightBlock.lightCount = std::min(8, (int)lights.size());
+            for (int i = 0; i < lightBlock.lightCount; ++i) {
+                lightBlock.lights[i] = lights[i];
+            }
+            void* data;
+            vkMapMemory(device, lightBlockBufferMemory, 0, sizeof(lightBlock), 0, &data);
+            memcpy(data, &lightBlock, sizeof(lightBlock));
+            vkUnmapMemory(device, lightBlockBufferMemory);
         }
         {
             modelTransforms.reserve(objects.size());
@@ -235,19 +264,36 @@ private:
         VkDescriptorSet descriptorSet;
         vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
         {
-            VkDescriptorBufferInfo bufferInfo{};
-            bufferInfo.buffer = viewProjectionBuffer;
-            bufferInfo.offset = 0;
-            bufferInfo.range = sizeof(ViewProjection);
-            std::array writes = {VkWriteDescriptorSet{
+            VkDescriptorBufferInfo viewProjectionBufferInfo{
+                .buffer = viewProjectionBuffer,
+                .offset = 0,
+                .range = sizeof(ViewProjection)
+            };
+            VkDescriptorBufferInfo lightBlockBufferInfo{
+                .buffer = lightBlockBuffer,
+                .offset = 0,
+                .range = sizeof(LightBlock)
+            };
+            std::array writes = {
+                VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                     .dstSet = descriptorSet,
                     .dstBinding = 0,
                     .dstArrayElement = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     .descriptorCount = 1,
-                    .pBufferInfo = &bufferInfo,
-            }};
+                    .pBufferInfo = &viewProjectionBufferInfo,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSet,
+                    .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &lightBlockBufferInfo,
+                },
+            };
             vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
         }
         return descriptorSet;
@@ -297,18 +343,26 @@ private:
     }
 
     static VkDescriptorSetLayout createDescriptorSetLayoutViewProjection(VkDevice device) {
-        VkDescriptorSetLayoutBinding uboLayoutBinding{};
-        uboLayoutBinding.binding = 0;
-        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboLayoutBinding.descriptorCount = 1;
-        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-        std::array bindings = {uboLayoutBinding};
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = bindings.size();
-        layoutInfo.pBindings = bindings.data();
-
+        std::array bindings = {
+            VkDescriptorSetLayoutBinding{
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            },
+            VkDescriptorSetLayoutBinding{
+                .binding = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            }
+        };
+        VkDescriptorSetLayoutCreateInfo layoutInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = bindings.size(),
+            .pBindings = bindings.data(),
+        };
+        
         VkDescriptorSetLayout descriptorSetLayout;
         vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
         return descriptorSetLayout;
@@ -316,7 +370,7 @@ private:
 
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t poolSize) {
         std::array poolSizes = {
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=poolSize + poolSize + 1},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=poolSize + poolSize + 2},
             VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=poolSize},
         };
         VkDescriptorPoolCreateInfo poolInfo{};

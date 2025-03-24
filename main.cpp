@@ -411,12 +411,19 @@ int main() {
     woodenStoolModel.specularPower = 5;
     MeshObject woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
 
-    Model lightSphereModel;
-    lightSphereModel.vertices = createSphereMesh(2, 0.05);
-    lightSphereModel.diffuseFactor = glm::vec3{0.0f};
-    lightSphereModel.emitFactor = glm::vec3{1.0f};
-    MeshObject lightSphereObj = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightSphereModel);
-    lightSphereObj.position = {0.0f, 1.0f, 2.0f};
+    Model lightModel1;
+    lightModel1.vertices = createSphereMesh(2, 0.05);
+    lightModel1.diffuseFactor = glm::vec3{0.0f};
+    lightModel1.emitFactor = glm::vec3{1.0f, 0.5f, 0.5f};
+    MeshObject lightObj1 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel1);
+    lightObj1.position = {-1.5f, 1.0f, 1.0f};
+
+    Model lightModel2;
+    lightModel2.vertices = createSphereMesh(2, 0.05);
+    lightModel2.diffuseFactor = glm::vec3{0.0f};
+    lightModel2.emitFactor = glm::vec3{0.5f, 0.5f, 1.0f};
+    MeshObject lightObj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel2);
+    lightObj2.position = {1.5f, 1.0f, 1.0f};
 
     MeshObject obj2{};
     { // rectangle with texture
@@ -513,7 +520,12 @@ int main() {
             {
                 Pipeline::Object{woodenStool.getTransform(), woodenStool.vertexBuffer, 0, woodenStool.vertexCount, woodenStool.material},
                 Pipeline::Object{obj2.getTransform(), obj2.vertexBuffer, 0, obj2.vertexCount, obj2.material},
-                Pipeline::Object{lightSphereObj.getTransform(), lightSphereObj.vertexBuffer, 0, lightSphereObj.vertexCount, lightSphereObj.material},
+                Pipeline::Object{lightObj1.getTransform(), lightObj1.vertexBuffer, 0, lightObj1.vertexCount, lightObj1.material},
+                Pipeline::Object{lightObj2.getTransform(), lightObj2.vertexBuffer, 0, lightObj2.vertexCount, lightObj2.material},
+            },
+            {
+                Pipeline::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}},
+                Pipeline::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}},
             }
         );
         vkCmdEndRenderPass(commandBuffer);
