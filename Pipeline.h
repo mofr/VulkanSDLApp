@@ -5,6 +5,7 @@
 
 #include "Vertex.h"
 #include "VulkanFunctions.h"
+#include "MeshObject.h"
 
 /**
 The class represents a concrete Vulkan pipeline to render textured meshes.
@@ -71,16 +72,6 @@ public:
         modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
 
-    struct Object {
-        glm::mat4 transformMatrix;
-
-        VkBuffer vertexBuffer;
-        uint32_t vertexBufferOffset;
-        uint32_t vertexCount;
-
-        VkDescriptorSet material;
-    };
-
     struct MaterialProps {
         glm::vec3 diffuseFactor{1.0f};
         float _padding1;
@@ -106,7 +97,7 @@ public:
         VkCommandBuffer commandBuffer,
         glm::mat4 const& projection,
         glm::mat4 const& view,
-        std::vector<Object> const& objects,
+        std::vector<MeshObject> const& objects,
         std::vector<Light> const& lights
     ) {
         // TODO sort by Z to reduce overdraw?
@@ -135,7 +126,7 @@ public:
         {
             modelTransforms.reserve(objects.size());
             modelTransforms.clear();
-            for (auto const& object : objects) {modelTransforms.push_back({object.transformMatrix});}
+            for (auto const& object : objects) {modelTransforms.push_back({object.getTransform()});}
             void* data;
             vkMapMemory(device, modelTransformBufferMemory, 0, modelTransforms.size() * sizeof(ModelTransform), 0, &data);
             memcpy(data, modelTransforms.data(), modelTransforms.size() * sizeof(ModelTransform));
@@ -146,12 +137,12 @@ public:
 
         // TODO group by vertex buffer and material
         for (uint32_t i = 0; i < objects.size(); i++) {
-            Object const& object = objects[i];
+            auto const& object = objects[i];
             VkDescriptorSet transformDescriptorSet = modelTransformDescriptorSets[i];
             std::array descriptorSets = {transformDescriptorSet, object.material};
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
             VkBuffer vertexBuffers[] = { object.vertexBuffer };
-            VkDeviceSize offsets[] = { object.vertexBufferOffset };
+            VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
             vkCmdDraw(commandBuffer, object.vertexCount, 1, 0, 0);
         }
@@ -202,6 +193,11 @@ public:
         return materialDescriptorSet;
     }
 
+    ~Pipeline() {
+
+    }
+
+private:
     VkDescriptorSet createMaterialDescriptorSet() const {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -213,11 +209,6 @@ public:
         return descriptorSet;
     }
 
-    ~Pipeline() {
-
-    }
-
-private:
     std::vector<VkDescriptorSet> createDescriptorSetsModelTransforms(uint32_t count) {
         std::vector layouts(count, descriptorSetLayoutModelTransform);
         VkDescriptorSetAllocateInfo allocInfo{};

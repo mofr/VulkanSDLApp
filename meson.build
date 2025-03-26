@@ -39,6 +39,7 @@ app = executable(
                 'ImageFunctions.h',
                 'MeshFunctions.h',
                 'ObjFile.h',
+                'Material.h',
                 'Model.h',
                 'Camera.h',
                 'CameraController.h',

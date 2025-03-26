@@ -24,6 +24,43 @@
 #include "FlyingCameraController.h"
 
 
+VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
+    Pipeline::MaterialProps materialProps{
+        .diffuseFactor = material.diffuseFactor,
+        .emitFactor = material.emitFactor,
+        .specularHardness = material.specularHardness,
+        .specularPower = material.specularPower,
+    };
+    return pipeline.createMaterial(textureImageView, sampler, materialProps);
+}
+
+MeshObject transferModelToGpu(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, VkSampler textureSampler, Pipeline& pipeline, const Model& model) {
+    MeshObject object{};
+    object.vertexBuffer = createVertexBuffer(physicalDevice, device, model.vertices);
+    object.vertexCount = model.vertices.size();
+    if (model.material.diffuseTexture.empty()) {
+        ImageData whitePixel;
+        uint8_t * whitePixelData = (uint8_t*) malloc(4);
+        whitePixelData[0] = 255;
+        whitePixelData[1] = 255;
+        whitePixelData[2] = 255;
+        whitePixelData[3] = 255;
+        whitePixel.data.reset((void*) whitePixelData);
+        whitePixel.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+        whitePixel.dataSize = 4;
+        whitePixel.width = 1;
+        whitePixel.height = 1;
+        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, whitePixel);
+    }
+    else {
+        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, model.material.diffuseTexture);
+    }
+    object.textureImageView = createImageView(device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+    object.material = transferMaterialToGpu(model.material, pipeline, textureSampler, object.textureImageView);
+    return object;
+}
+
+
 int main() {
     uint32_t width = 1024;
     uint32_t height = 768;
@@ -407,25 +444,26 @@ int main() {
     Pipeline pipeline(physicalDevice, device, swapchainExtent, renderPass, 1024);
 
     Model woodenStoolModel = loadObj("resources/wooden_stool_02_4k.obj");
-    woodenStoolModel.specularHardness = 500;
-    woodenStoolModel.specularPower = 5;
-    MeshObject woodenStool = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
+    woodenStoolModel.material.specularHardness = 500;
+    woodenStoolModel.material.specularPower = 5;
+    MeshObject woodenStool = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
 
     Model lightModel1;
     lightModel1.vertices = createSphereMesh(2, 0.05);
-    lightModel1.diffuseFactor = glm::vec3{0.0f};
-    lightModel1.emitFactor = glm::vec3{1.0f, 0.5f, 0.5f};
-    MeshObject lightObj1 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel1);
+    lightModel1.material.diffuseFactor = glm::vec3{0.0f};
+    lightModel1.material.emitFactor = glm::vec3{1.0f, 0.5f, 0.5f};
+    MeshObject lightObj1 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel1);
     lightObj1.position = {-1.5f, 1.0f, 1.0f};
 
     Model lightModel2;
     lightModel2.vertices = createSphereMesh(2, 0.05);
-    lightModel2.diffuseFactor = glm::vec3{0.0f};
-    lightModel2.emitFactor = glm::vec3{0.5f, 0.5f, 1.0f};
-    MeshObject lightObj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel2);
+    lightModel2.material.diffuseFactor = glm::vec3{0.0f};
+    lightModel2.material.emitFactor = glm::vec3{0.5f, 0.5f, 1.0f};
+    MeshObject lightObj2 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel2);
     lightObj2.position = {1.5f, 1.0f, 1.0f};
 
-    MeshObject obj2{};
+    MeshObject floorObj{};
+    Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.5f, 0.5f, 0.5f}};
     { // rectangle with texture
         std::vector<Vertex> vertices;
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
@@ -436,9 +474,8 @@ int main() {
         vertices.push_back({{-1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
-        Model model{vertices, "", .specularHardness=50, .specularPower=1};
-        model.diffuseFactor = {0.5f, 0.5f, 0.5f};
-        obj2 = transferModelToVulkan(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
+        Model model{vertices, floorMaterial};
+        floorObj = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
     }
 
     VkSemaphoreCreateInfo semaphoreInfo{};
@@ -518,10 +555,10 @@ int main() {
             camera.getProjectionMatrix(),
             camera.getViewMatrix(),
             {
-                Pipeline::Object{woodenStool.getTransform(), woodenStool.vertexBuffer, 0, woodenStool.vertexCount, woodenStool.material},
-                Pipeline::Object{obj2.getTransform(), obj2.vertexBuffer, 0, obj2.vertexCount, obj2.material},
-                Pipeline::Object{lightObj1.getTransform(), lightObj1.vertexBuffer, 0, lightObj1.vertexCount, lightObj1.material},
-                Pipeline::Object{lightObj2.getTransform(), lightObj2.vertexBuffer, 0, lightObj2.vertexCount, lightObj2.material},
+                woodenStool,
+                floorObj,
+                lightObj1,
+                lightObj2,
             },
             {
                 Pipeline::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}},

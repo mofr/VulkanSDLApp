@@ -128,5 +128,5 @@ Model loadObj(const std::string& filePath) {
         }
     }
 
-    return {vertices, diffuseTexture, normalTexture};
+    return {vertices, {diffuseTexture, normalTexture}};
 }
