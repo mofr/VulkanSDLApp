@@ -12,6 +12,10 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 
+#include <imgui.h>
+#include <imgui_impl_sdl2.h>
+#include <imgui_impl_vulkan.h>
+
 #include "Pipeline.h"
 #include "Vertex.h"
 #include "VulkanFunctions.h"
@@ -60,6 +64,14 @@ MeshObject transferModelToGpu(VkPhysicalDevice physicalDevice, VkDevice device, 
     return object;
 }
 
+static void check_vk_result(VkResult err)
+{
+    if (err == 0)
+        return;
+    fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+    if (err < 0)
+        abort();
+}
 
 int main() {
     uint32_t width = 1024;
@@ -439,6 +451,20 @@ int main() {
         }
     }
 
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    std::vector<VkSemaphore> imageAvailableSemaphores(maxFramesInFlight);
+    std::vector<VkSemaphore> renderFinishedSemaphores(maxFramesInFlight);
+    std::vector<VkFence> renderFences(maxFramesInFlight);
+    for (size_t i = 0; i < maxFramesInFlight; ++i) {
+        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
+        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]);
+        vkCreateFence(device, &fenceInfo, nullptr, &renderFences[i]);
+    }
+
     VkSampler textureSampler = createTextureSampler(device, physicalDevice);
 
     Pipeline pipeline(physicalDevice, device, swapchainExtent, renderPass, 1024);
@@ -478,20 +504,6 @@ int main() {
         floorObj = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
     }
 
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    std::vector<VkSemaphore> imageAvailableSemaphores(maxFramesInFlight);
-    std::vector<VkSemaphore> renderFinishedSemaphores(maxFramesInFlight);
-    std::vector<VkFence> renderFences(maxFramesInFlight);
-    for (size_t i = 0; i < maxFramesInFlight; ++i) {
-        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
-        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]);
-        vkCreateFence(device, &fenceInfo, nullptr, &renderFences[i]);
-    }
-
     Camera camera;
     camera.setAspectRatio(float(width) / float(height));
     camera.setPosition({0.0f, 1.0f, 2.0f});
@@ -500,6 +512,31 @@ int main() {
     FlyingCameraController flyingCameraController;
     CameraController* cameraController = &flyingCameraController;
     SDL_SetRelativeMouseMode(SDL_TRUE);
+    bool controlCamera = true;
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    ImGui_ImplSDL2_InitForVulkan(window);
+    ImGui_ImplVulkan_InitInfo init_info {
+        .Instance = instance,
+        .PhysicalDevice = physicalDevice,
+        .Device = device,
+        .QueueFamily = graphicsQueueFamilyIndex,
+        .Queue = graphicsQueue,
+        .PipelineCache = nullptr,
+        .DescriptorPoolSize = 2,
+        .RenderPass = renderPass,
+        .Subpass = 0,
+        .MinImageCount = 2,
+        .ImageCount = 2,
+        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+        .Allocator = nullptr,
+        .CheckVkResultFn = check_vk_result,
+    };
+    ImGui_ImplVulkan_Init(&init_info);
 
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();
@@ -524,32 +561,39 @@ int main() {
 
         vkResetFences(device, 1, &renderFences[currentFrame]);
 
+        static const float maxFrameTime = 1.0f / 30.0f;
+        auto now = Clock::now();
+        float dt = std::chrono::duration<float>(now - lastUpdateTime).count();
+        dt = glm::min(dt, maxFrameTime);
+        lastUpdateTime = now;
+        auto fps = static_cast<int>(1.0f / dt);
+
         // record commands
         VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
         vkResetCommandBuffer(commandBuffer, 0);
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+        VkCommandBufferBeginInfo commanBufferBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        };
+        if (vkBeginCommandBuffer(commandBuffer, &commanBufferBeginInfo) != VK_SUCCESS) {
             std::cerr << "Failed to begin recording command buffer!" << std::endl;
             return -1;
         }
-
-        VkRenderPassBeginInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = framebuffers[currentFrame];
-        renderPassInfo.renderArea.offset = { 0, 0 };
-        renderPassInfo.renderArea.extent = { swapchainExtent.width, swapchainExtent.height };
 
         std::array clearValues{
             VkClearValue{.color={{0.05f, 0.05f, 0.05f, 1.0f}}},
             VkClearValue{.depthStencil={1.0f, 0}}
         };
-        renderPassInfo.clearValueCount = clearValues.size();
-        renderPassInfo.pClearValues = clearValues.data();
+        VkRenderPassBeginInfo renderPassBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass = renderPass,
+            .framebuffer = framebuffers[currentFrame],
+            .renderArea.offset = { 0, 0 },
+            .renderArea.extent = { swapchainExtent.width, swapchainExtent.height },
+            .clearValueCount = clearValues.size(),
+            .pClearValues = clearValues.data(),
+        };
+        vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         pipeline.draw(
             commandBuffer,
             camera.getProjectionMatrix(),
@@ -565,6 +609,20 @@ int main() {
                 Pipeline::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}},
             }
         );
+
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+        ImGui::Begin("Measurements!");
+        std::string frameTimeString = std::to_string(dt * 1000) + " ms";
+        std::string fpsString = std::to_string(fps) + " FPS";
+        ImGui::Text(frameTimeString.c_str());
+        ImGui::Text(fpsString.c_str());
+        ImGui::End();
+        ImGui::Render();
+        ImDrawData* imguiDrawData = ImGui::GetDrawData();
+        ImGui_ImplVulkan_RenderDrawData(imguiDrawData, commandBuffers[imageIndex]);
+
         vkCmdEndRenderPass(commandBuffer);
 
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -573,18 +631,19 @@ int main() {
         }
 
         // Submit the command buffer
-        VkSubmitInfo submitInfo{};
         VkPipelineStageFlags waitStages[] = {
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT // Wait for color output stage
         };
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = &imageAvailableSemaphores[currentFrame]; // Wait for the image to be available
-        submitInfo.pWaitDstStageMask = waitStages; // Wait for color output stage
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffers[imageIndex]; // Command buffer for this image
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &renderFinishedSemaphores[currentFrame]; // Signal when rendering is finished
+        VkSubmitInfo submitInfo{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &imageAvailableSemaphores[currentFrame], // Wait for the image to be available
+            .pWaitDstStageMask = waitStages,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffers[imageIndex], // Command buffer for this image
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &renderFinishedSemaphores[currentFrame], // Signal when rendering is finished
+        };
         if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, renderFences[currentFrame]) != VK_SUCCESS) {
             std::cerr << "Failed to submit draw command buffer!" << std::endl;
             return -1;
@@ -603,16 +662,8 @@ int main() {
             std::cerr << "Failed to present swapchain image!" << std::endl;
         }
 
-        static const float maxFrameTime = 1.0f / 30.0f;
-        auto now = Clock::now();
-        float dt = std::chrono::duration<float>(now - lastUpdateTime).count();
-        dt = glm::min(dt, maxFrameTime);
-        lastUpdateTime = now;
-        auto fps = static_cast<int>(1.0f / dt);
-        std::string windowTitle = std::to_string(dt * 1000) + " ms, " + std::to_string(fps) + " FPS";
-        SDL_SetWindowTitle(window, windowTitle.c_str());
-
         while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT) {
                 running = false;
             }
@@ -626,15 +677,29 @@ int main() {
                 if (event.key.keysym.sym == SDLK_2) {
                     cameraController = &orbitCameraController;
                 }
+                if (event.key.keysym.sym == SDLK_RETURN) {
+                    SDL_SetRelativeMouseMode((SDL_bool)(SDL_GetRelativeMouseMode() ^ 1));
+                    controlCamera = !controlCamera;
+                }
             }
-            cameraController->update(camera, event, dt);
+            if (controlCamera)
+                cameraController->update(camera, event, dt);
         }
-        cameraController->update(camera, dt);
+        if (controlCamera)
+            cameraController->update(camera, dt);
 
         currentFrame = (currentFrame + 1) % maxFramesInFlight;
     }
 
     // Cleanup
+    {
+        VkResult err = vkDeviceWaitIdle(device);
+        check_vk_result(err);
+    }
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+    // First need to delete all child objects
     // vkDestroyInstance(instance, nullptr);
     SDL_DestroyWindow(window);
     SDL_Quit();
