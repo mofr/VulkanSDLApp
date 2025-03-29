@@ -7,7 +7,9 @@ struct MeshObject {
     VkBuffer vertexBuffer;
     VkImage textureImage;
     VkImageView textureImageView;
-    VkDescriptorSet material;
+
+    Material material;
+    VkDescriptorSet materialDescriptorSet;
 
     glm::vec3 position;
     float angleY = 0.0f;

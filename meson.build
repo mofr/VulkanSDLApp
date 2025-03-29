@@ -53,6 +53,7 @@ app = executable(
                 '3rdparty/imgui.h',
                 '3rdparty/imgui.cpp',
                 '3rdparty/imgui_draw.cpp',
+                '3rdparty/imgui_demo.cpp',
                 '3rdparty/imgui_internal.h',
                 '3rdparty/imgui_widgets.cpp',
                 '3rdparty/imgui_tables.cpp',

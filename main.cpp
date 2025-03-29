@@ -60,7 +60,8 @@ MeshObject transferModelToGpu(VkPhysicalDevice physicalDevice, VkDevice device, 
         object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, model.material.diffuseTexture);
     }
     object.textureImageView = createImageView(device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
-    object.material = transferMaterialToGpu(model.material, pipeline, textureSampler, object.textureImageView);
+    object.material = model.material;
+    object.materialDescriptorSet = transferMaterialToGpu(model.material, pipeline, textureSampler, object.textureImageView);
     return object;
 }
 
@@ -150,6 +151,9 @@ int main() {
         std::cerr << "Failed to create physical device!" << std::endl;
         return -1;
     }
+
+    VkPhysicalDeviceProperties physicalDeviceProperties{};
+    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 
     VkDevice device;
     uint32_t graphicsQueueFamilyIndex = UINT32_MAX;
@@ -465,32 +469,44 @@ int main() {
         vkCreateFence(device, &fenceInfo, nullptr, &renderFences[i]);
     }
 
-    VkSampler textureSampler = createTextureSampler(device, physicalDevice);
+    float maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy;
+    VkSampler textureSampler = createTextureSampler(device, maxAnisotropy);
 
     Pipeline pipeline(physicalDevice, device, swapchainExtent, renderPass, 1024);
+    std::vector<MeshObject> meshObjects;
+    std::vector<Pipeline::Light> lights;
 
-    Model woodenStoolModel = loadObj("resources/wooden_stool_02_4k.obj");
-    woodenStoolModel.material.specularHardness = 500;
-    woodenStoolModel.material.specularPower = 5;
-    MeshObject woodenStool = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
+    {
+        Model woodenStoolModel = loadObj("resources/wooden_stool_02_4k.obj");
+        woodenStoolModel.material.specularHardness = 500;
+        woodenStoolModel.material.specularPower = 5;
+        MeshObject woodenStool = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
+        meshObjects.push_back(woodenStool);
+    }
 
-    Model lightModel1;
-    lightModel1.vertices = createSphereMesh(2, 0.05);
-    lightModel1.material.diffuseFactor = glm::vec3{0.0f};
-    lightModel1.material.emitFactor = glm::vec3{1.0f, 0.5f, 0.5f};
-    MeshObject lightObj1 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel1);
-    lightObj1.position = {-1.5f, 1.0f, 1.0f};
+    {
+        Model lightModel1;
+        lightModel1.vertices = createSphereMesh(2, 0.05);
+        lightModel1.material.diffuseFactor = glm::vec3{0.0f};
+        lightModel1.material.emitFactor = glm::vec3{1.0f, 0.5f, 0.5f};
+        MeshObject lightObj1 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel1);
+        lightObj1.position = {-1.5f, 1.0f, 1.0f};
+        meshObjects.push_back(lightObj1);
+        lights.push_back(Pipeline::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}});
+    }
 
-    Model lightModel2;
-    lightModel2.vertices = createSphereMesh(2, 0.05);
-    lightModel2.material.diffuseFactor = glm::vec3{0.0f};
-    lightModel2.material.emitFactor = glm::vec3{0.5f, 0.5f, 1.0f};
-    MeshObject lightObj2 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel2);
-    lightObj2.position = {1.5f, 1.0f, 1.0f};
+    {
+        Model lightModel2;
+        lightModel2.vertices = createSphereMesh(2, 0.05);
+        lightModel2.material.diffuseFactor = glm::vec3{0.0f};
+        lightModel2.material.emitFactor = glm::vec3{0.5f, 0.5f, 1.0f};
+        MeshObject lightObj2 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel2);
+        lightObj2.position = {1.5f, 1.0f, 1.0f};
+        meshObjects.push_back(lightObj2);
+        lights.push_back(Pipeline::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}});
+    }
 
-    MeshObject floorObj{};
-    Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.5f, 0.5f, 0.5f}};
-    { // rectangle with texture
+    {
         std::vector<Vertex> vertices;
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
         vertices.push_back({{1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {1, 0}});
@@ -500,8 +516,11 @@ int main() {
         vertices.push_back({{-1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
+        Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.5f, 0.5f, 0.5f}};
         Model model{vertices, floorMaterial};
+        MeshObject floorObj;
         floorObj = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
+        meshObjects.push_back(floorObj);
     }
 
     Camera camera;
@@ -598,26 +617,30 @@ int main() {
             commandBuffer,
             camera.getProjectionMatrix(),
             camera.getViewMatrix(),
-            {
-                woodenStool,
-                floorObj,
-                lightObj1,
-                lightObj2,
-            },
-            {
-                Pipeline::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}},
-                Pipeline::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}},
-            }
+            meshObjects,
+            lights
         );
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-        ImGui::Begin("Measurements!");
+        ImGui::Begin("Config");
         std::string frameTimeString = std::to_string(dt * 1000) + " ms";
         std::string fpsString = std::to_string(fps) + " FPS";
         ImGui::Text(frameTimeString.c_str());
         ImGui::Text(fpsString.c_str());
+        {
+            static const std::array labels = { "Trilinear", "2X", "4X", "8X", "16X" };
+            static const std::array anisotropyValues = { 0.0f, 2.0f, 4.0f, 8.0f, 16.0f };
+            static int elem = anisotropyValues.size() - 1;
+            if (ImGui::SliderInt("Anisotropy", &elem, 0, labels.size() - 1, labels[elem])) {
+                maxAnisotropy = anisotropyValues[elem];
+                textureSampler = createTextureSampler(device, maxAnisotropy);
+                for (auto& obj : meshObjects) {
+                    obj.materialDescriptorSet = transferMaterialToGpu(obj.material, pipeline, textureSampler, obj.textureImageView);
+                }
+            }
+        }
         ImGui::End();
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();

@@ -139,7 +139,7 @@ public:
         for (uint32_t i = 0; i < objects.size(); i++) {
             auto const& object = objects[i];
             VkDescriptorSet transformDescriptorSet = modelTransformDescriptorSets[i];
-            std::array descriptorSets = {transformDescriptorSet, object.material};
+            std::array descriptorSets = {transformDescriptorSet, object.materialDescriptorSet};
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
             VkBuffer vertexBuffers[] = { object.vertexBuffer };
             VkDeviceSize offsets[] = { 0 };

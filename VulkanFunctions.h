@@ -155,10 +155,7 @@ VkImageView createImageView(VkDevice device, VkImage image, VkFormat format) {
     return imageView;
 }
 
-VkSampler createTextureSampler(VkDevice device, VkPhysicalDevice physicalDevice) {
-    VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
-
+VkSampler createTextureSampler(VkDevice device, float maxAnisotropy) {
     VkSamplerCreateInfo samplerInfo{};
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     samplerInfo.magFilter = VK_FILTER_LINEAR;
@@ -166,8 +163,8 @@ VkSampler createTextureSampler(VkDevice device, VkPhysicalDevice physicalDevice)
     samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.anisotropyEnable = VK_TRUE;
-    samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    samplerInfo.anisotropyEnable = maxAnisotropy > 0;
+    samplerInfo.maxAnisotropy = maxAnisotropy;
     samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     samplerInfo.unnormalizedCoordinates = VK_FALSE;
     samplerInfo.compareEnable = VK_FALSE;

@@ -2,7 +2,6 @@
 - Animate lights (position and color/intensity)
 - Reduce main function size
 - Implement normal mapping
-- Add UI library
 - Build to web
 - MSAA
 - Mipmaps
