@@ -5,7 +5,3 @@
 - Build to web
 - MSAA
 - Mipmaps
-- Change Anisotropic filtering in runtime:
- - recreate materials when anisotropy is changed
- - Add UI to change the sampler
-- Temporal anti-aliasing
