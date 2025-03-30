@@ -47,6 +47,7 @@ app = executable(
                 'FlyingCameraController.h',
                 'MeshObject.h',
                 'Swapchain.h',
+                'RenderSurface.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
                 '3rdparty/tinyexr.cc',

@@ -26,7 +26,7 @@
 #include "MeshFunctions.h"
 #include "OrbitCameraController.h"
 #include "FlyingCameraController.h"
-#include "Swapchain.h"
+#include "RenderSurface.h"
 
 
 VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
@@ -215,16 +215,6 @@ int main() {
         return -1;
     }
 
-    VkQueue presentQueue;
-    vkGetDeviceQueue(device, graphicsQueueFamilyIndex, 0, &presentQueue);
-    if (presentQueue == VK_NULL_HANDLE) {
-        std::cerr << "Failed to get present queue!" << std::endl;
-        return -1;
-    }
-
-    uint32_t maxFramesInFlight = 3;
-    Swapchain swapchain(physicalDevice, device, surface, {width, height}, maxFramesInFlight);
-
     VkCommandPool commandPool;
     {
         VkCommandPoolCreateInfo poolInfo{};
@@ -237,148 +227,25 @@ int main() {
         }
     }
 
-    VkImage depthImage;
-    VkDeviceMemory depthImageMemory;
-    VkImageView depthImageView;
-    VkFormat depthFormat = findDepthFormat(physicalDevice);
-    {
-        createImage(
-            physicalDevice,
-            device,
-            width,
-            height,
-            depthFormat,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            depthImage,
-            depthImageMemory
-        );
+    RenderSurface renderSurface({
+        .physicalDevice = physicalDevice,
+        .device = device,
+        .surface = surface,
+        .graphicsQueue = graphicsQueue,
+        .presentQueue = graphicsQueue,
+        .graphicsQueueFamilyIndex = graphicsQueueFamilyIndex,
+        .extent = {width, height},
+        .framesInFlight = 3,
+        .vsyncEnabled = false,
+        .msaaSamples = VK_SAMPLE_COUNT_1_BIT,
+    });
 
-        VkImageViewCreateInfo viewInfo{};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = depthImage;
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = depthFormat;
-        viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        viewInfo.subresourceRange.baseMipLevel = 0;
-        viewInfo.subresourceRange.levelCount = 1;
-        viewInfo.subresourceRange.baseArrayLayer = 0;
-        viewInfo.subresourceRange.layerCount = 1;
-
-        if (vkCreateImageView(device, &viewInfo, nullptr, &depthImageView) != VK_SUCCESS) {
-            std::cerr << "Failed to create image views!" << std::endl;
-            return -1;
-        }
-    }
-
-    VkRenderPass renderPass;
-    {
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = swapchain.getFormat();
-        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Clear before use
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Store after rendering
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        VkAttachmentDescription depthAttachment{};
-        depthAttachment.format = depthFormat;
-        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-        VkAttachmentReference colorAttachmentRef{
-            .attachment = 0,
-            .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        };
-        VkAttachmentReference depthAttachmentRef{
-            .attachment = 1,
-            .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        };
-        VkSubpassDescription subpass{
-            .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &colorAttachmentRef,
-            .pDepthStencilAttachment = &depthAttachmentRef,
-        };
-
-        VkRenderPassCreateInfo renderPassCreateInfo{};
-        renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        std::array attachments = {colorAttachment, depthAttachment};
-        renderPassCreateInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-        renderPassCreateInfo.pAttachments = attachments.data();
-        renderPassCreateInfo.subpassCount = 1;
-        renderPassCreateInfo.pSubpasses = &subpass;
-
-        if (vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass) != VK_SUCCESS) {
-            std::cerr << "Failed to create render pass!" << std::endl;
-            return -1;
-        }
-    }
-
-    std::vector<VkFramebuffer> framebuffers(swapchain.getImageCount());
-    for (size_t i = 0; i < framebuffers.size(); i++) {
-        VkFramebufferCreateInfo framebufferInfo{};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = renderPass;
-        std::array attachments = {
-            swapchain.getImageView(i),
-            depthImageView,
-        };
-        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-        framebufferInfo.pAttachments = attachments.data();
-        framebufferInfo.width = width;
-        framebufferInfo.height = height;
-        framebufferInfo.layers = 1;
-
-        if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
-            std::cerr << "Failed to create framebuffer!" << std::endl;
-            return -1;
-        }
-    }
-
-    std::vector<VkCommandBuffer> commandBuffers(maxFramesInFlight);
-    {
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // Primary command buffers can be submitted to queues
-        allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
-        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
-            std::cerr << "Failed to allocate command buffers!" << std::endl;
-            return -1;
-        }
-    }
-
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    std::vector<VkSemaphore> renderFinishedSemaphores(maxFramesInFlight);
-    std::vector<VkFence> renderFences(maxFramesInFlight);
-    for (size_t i = 0; i < maxFramesInFlight; ++i) {
-        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]);
-        vkCreateFence(device, &fenceInfo, nullptr, &renderFences[i]);
-    }
+    Pipeline pipeline(physicalDevice, device, renderSurface.getExtent(), renderSurface.getRenderPass(), 1024);
+    std::vector<MeshObject> meshObjects;
+    std::vector<Pipeline::Light> lights;
 
     float maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy;
     VkSampler textureSampler = createTextureSampler(device, maxAnisotropy);
-
-    Pipeline pipeline(physicalDevice, device, {width, height}, renderPass, 1024);
-    std::vector<MeshObject> meshObjects;
-    std::vector<Pipeline::Light> lights;
 
     {
         Model woodenStoolModel = loadObj("resources/wooden_stool_02_4k.obj");
@@ -451,7 +318,7 @@ int main() {
         .Queue = graphicsQueue,
         .PipelineCache = nullptr,
         .DescriptorPoolSize = 2,
-        .RenderPass = renderPass,
+        .RenderPass = renderSurface.getRenderPass(),
         .Subpass = 0,
         .MinImageCount = 2,
         .ImageCount = 2,
@@ -463,49 +330,45 @@ int main() {
 
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();
-    size_t currentFrame = 0;
     bool running = true;
     SDL_Event event;
     while (running) {
-        vkWaitForFences(device, 1, &renderFences[currentFrame], true, UINT64_MAX);
-        auto [swapchainImageIndex, imageAvailableSemaphore] = swapchain.acquireNextImage();
-        vkResetFences(device, 1, &renderFences[currentFrame]);
-
         static const float maxFrameTime = 1.0f / 30.0f;
         auto now = Clock::now();
         float dt = std::chrono::duration<float>(now - lastUpdateTime).count();
         dt = glm::min(dt, maxFrameTime);
         lastUpdateTime = now;
         auto fps = static_cast<int>(1.0f / dt);
-
-        // record commands
-        VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
-        vkResetCommandBuffer(commandBuffer, 0);
-        VkCommandBufferBeginInfo commanBufferBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        };
-        if (vkBeginCommandBuffer(commandBuffer, &commanBufferBeginInfo) != VK_SUCCESS) {
-            std::cerr << "Failed to begin recording command buffer!" << std::endl;
-            return -1;
+        while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (event.type == SDL_QUIT) {
+                running = false;
+            }
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) {
+                    running = false;
+                }
+                if (event.key.keysym.sym == SDLK_1) {
+                    cameraController = &flyingCameraController;
+                }
+                if (event.key.keysym.sym == SDLK_2) {
+                    cameraController = &orbitCameraController;
+                }
+                if (event.key.keysym.sym == SDLK_RETURN) {
+                    SDL_SetRelativeMouseMode((SDL_bool)(SDL_GetRelativeMouseMode() ^ 1));
+                    controlCamera = !controlCamera;
+                }
+            }
+            if (controlCamera)
+                cameraController->update(camera, event, dt);
         }
+        if (controlCamera)
+            cameraController->update(camera, dt);
 
-        std::array clearValues{
-            VkClearValue{.color={{0.05f, 0.05f, 0.05f, 1.0f}}},
-            VkClearValue{.depthStencil={1.0f, 0}}
-        };
-        VkRenderPassBeginInfo renderPassBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass = renderPass,
-            .framebuffer = framebuffers[currentFrame],
-            .renderArea.offset = { 0, 0 },
-            .renderArea.extent = swapchain.getExtent(),
-            .clearValueCount = clearValues.size(),
-            .pClearValues = clearValues.data(),
-        };
-        vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+        RenderSurface::Frame frame = renderSurface.beginFrame();
 
         pipeline.draw(
-            commandBuffer,
+            frame.commandBuffer,
             camera.getProjectionMatrix(),
             camera.getViewMatrix(),
             meshObjects,
@@ -541,82 +404,26 @@ int main() {
             // if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
             // if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
             static const std::array labels = { "Off", "2", "4", "8", "16", "32", "64" };
-            static const std::array values = { 0.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f };
+            static const std::array values = { 
+                VK_SAMPLE_COUNT_2_BIT,
+                VK_SAMPLE_COUNT_4_BIT,
+                VK_SAMPLE_COUNT_8_BIT,
+                VK_SAMPLE_COUNT_16_BIT,
+                VK_SAMPLE_COUNT_32_BIT,
+                VK_SAMPLE_COUNT_64_BIT
+            };
             static int elem = 0;
             static int elemCount = values.size();
-            ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem]);
+            if (ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem])) {
+                renderSurface.setMsaaSamples(values[elem]);
+            }
         }
         ImGui::End();
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();
-        ImGui_ImplVulkan_RenderDrawData(imguiDrawData, commandBuffer);
+        ImGui_ImplVulkan_RenderDrawData(imguiDrawData, frame.commandBuffer);
 
-        vkCmdEndRenderPass(commandBuffer);
-
-        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-            std::cerr << "Failed to record command buffer!" << std::endl;
-            return -1;
-        }
-
-        // Submit the command buffer
-        VkPipelineStageFlags waitStages[] = {
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT // Wait for color output stage
-        };
-        VkSubmitInfo submitInfo{
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &imageAvailableSemaphore, // Wait for the image to be available
-            .pWaitDstStageMask = waitStages,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &commandBuffers[currentFrame], // Command buffer for this image
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &renderFinishedSemaphores[currentFrame], // Signal when rendering is finished
-        };
-        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, renderFences[currentFrame]) != VK_SUCCESS) {
-            std::cerr << "Failed to submit draw command buffer!" << std::endl;
-            return -1;
-        }
-
-        // Present the rendered image
-        VkPresentInfoKHR presentInfo{};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = &renderFinishedSemaphores[currentFrame]; // Wait for rendering to finish
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = &swapchain.getHandle();
-        presentInfo.pImageIndices = &swapchainImageIndex;
-
-        if (vkQueuePresentKHR(presentQueue, &presentInfo) != VK_SUCCESS) {
-            std::cerr << "Failed to present swapchain image!" << std::endl;
-        }
-
-        while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT) {
-                running = false;
-            }
-            if (event.type == SDL_KEYDOWN) {
-                if (event.key.keysym.sym == SDLK_ESCAPE) {
-                    running = false;
-                }
-                if (event.key.keysym.sym == SDLK_1) {
-                    cameraController = &flyingCameraController;
-                }
-                if (event.key.keysym.sym == SDLK_2) {
-                    cameraController = &orbitCameraController;
-                }
-                if (event.key.keysym.sym == SDLK_RETURN) {
-                    SDL_SetRelativeMouseMode((SDL_bool)(SDL_GetRelativeMouseMode() ^ 1));
-                    controlCamera = !controlCamera;
-                }
-            }
-            if (controlCamera)
-                cameraController->update(camera, event, dt);
-        }
-        if (controlCamera)
-            cameraController->update(camera, dt);
-
-        currentFrame = (currentFrame + 1) % maxFramesInFlight;
+        renderSurface.endFrame(frame);
     }
 
     // Cleanup
