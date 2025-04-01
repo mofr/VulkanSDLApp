@@ -5,3 +5,5 @@
 - Build to web
 - MSAA
 - Mipmaps
+- Separate presentation (swapchain) and rendering. Do not render directly to swapchain images.
+- Use dynamic viewport in Pipeline https://www.youtube.com/watch?v=0IIqvi3Z0ng

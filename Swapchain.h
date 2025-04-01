@@ -4,27 +4,14 @@
 #include <iostream>
 
 class Swapchain {
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
-    VkSurfaceKHR surface;
-    VkSwapchainKHR swapchain;
-    VkExtent2D extent;
-    uint32_t imageCount;
-    std::vector<VkImage> images;
-    std::vector<VkImageView> imageViews;
-    VkFormat format;
-    std::vector<VkSemaphore> imageAvailableSemaphores;
-    uint32_t currentFrame = 0;
-
 public:
-    Swapchain(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface, VkExtent2D extent, uint32_t imageCount): 
-        physicalDevice(physicalDevice),
-        device(device), 
-        surface(surface),
-        extent(extent),
-        imageCount(imageCount), 
-        images(imageCount),
-        imageAvailableSemaphores(imageCount)
+    Swapchain(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface, VkExtent2D extent, uint32_t imageCount, bool vsyncEnabled, std::unique_ptr<Swapchain> oldSwapchain = nullptr): 
+        m_device(device), 
+        m_extent(extent),
+        m_imageCount(imageCount), 
+        m_images(imageCount),
+        m_imageAvailableSemaphores(imageCount),
+        m_oldSwapchain(std::move(oldSwapchain))
     {
         // Get supported presentation modes
         // uint32_t presentModeCount;
@@ -57,7 +44,7 @@ public:
             bool found = false;
             for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats) {
                 if (surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-                    format = surfaceFormat.format;
+                    m_format = surfaceFormat.format;
                     selectedFormat = surfaceFormat;
                     found = true;
                     break;
@@ -81,21 +68,21 @@ public:
         swapchainInfo.queueFamilyIndexCount = 0;
         swapchainInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
         swapchainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Adjust for windowed mode if needed
-        swapchainInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // Vsync
+        swapchainInfo.presentMode = vsyncEnabled ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
         swapchainInfo.clipped = VK_TRUE;
-        swapchainInfo.oldSwapchain = VK_NULL_HANDLE; // For the initial swapchain
-    
-        if (vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &swapchain) != VK_SUCCESS) {
+        swapchainInfo.oldSwapchain = m_oldSwapchain ? m_oldSwapchain->m_swapchain : nullptr;
+
+        if (vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &m_swapchain) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create swapchain");
         }
     
-        vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images.data());
+        vkGetSwapchainImagesKHR(device, m_swapchain, &imageCount, m_images.data());
 
-        imageViews.resize(images.size());
-        for (size_t i = 0; i < images.size(); i++) {
+        m_imageViews.resize(m_images.size());
+        for (size_t i = 0; i < m_images.size(); i++) {
             VkImageViewCreateInfo viewInfo{};
             viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            viewInfo.image = images[i];
+            viewInfo.image = m_images[i];
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
             viewInfo.format = selectedFormat.format;
             viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -108,7 +95,7 @@ public:
             viewInfo.subresourceRange.baseArrayLayer = 0;
             viewInfo.subresourceRange.layerCount = 1;
     
-            if (vkCreateImageView(device, &viewInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
+            if (vkCreateImageView(device, &viewInfo, nullptr, &m_imageViews[i]) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create image views!");
             }
         }
@@ -117,41 +104,60 @@ public:
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         };
         for (size_t i = 0; i < imageCount; ++i) {
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
+            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]);
         }
     }
 
-    std::tuple<uint32_t, VkSemaphore> acquireNextImage() {
-        VkSemaphore semaphore = imageAvailableSemaphores[currentFrame];
+    ~Swapchain() {
+        for (size_t i = 0; i < m_imageViews.size(); i++) {
+            vkDestroyImageView(m_device, m_imageViews[i], nullptr);
+        }
+        vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
+    }
+
+    std::tuple<bool, uint32_t, VkSemaphore> acquireNextImage() {
+        VkSemaphore semaphore = m_imageAvailableSemaphores[m_currentFrame];
         uint32_t imageIndex;
-        VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphore, VK_NULL_HANDLE, &imageIndex);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-            // TODO recreateSwapChain();
-            throw std::runtime_error("swapchain is out of date and needs to be recreated");
-        } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        VkResult result = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, semaphore, VK_NULL_HANDLE, &imageIndex);
+        if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR) {
+            return {true, 0, nullptr};
+        }
+        if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to acquire swap chain image!");
         }
-        currentFrame = (currentFrame + 1) % imageCount;
-        return {imageIndex, semaphore};
+        m_currentFrame = (m_currentFrame + 1) % m_imageCount;
+        return {false, imageIndex, semaphore};
     }
 
     VkSwapchainKHR const& getHandle() const {
-        return swapchain;
+        return m_swapchain;
     }
 
     VkExtent2D getExtent() const {
-        return extent;
+        return m_extent;
     }
 
     VkFormat getFormat() const {
-        return format;
+        return m_format;
     }
 
     uint32_t getImageCount() const {
-        return imageCount;
+        return m_imageCount;
     }
 
     VkImageView getImageView(int i) const {
-        return imageViews[i];
+        return m_imageViews[i];
     }
+
+private:
+    VkDevice m_device;
+    VkSwapchainKHR m_swapchain;
+    VkExtent2D m_extent;
+    uint32_t m_imageCount;
+    std::vector<VkImage> m_images;
+    std::vector<VkImageView> m_imageViews;
+    VkFormat m_format;
+    std::vector<VkSemaphore> m_imageAvailableSemaphores;
+    uint32_t m_currentFrame = 0;
+    std::unique_ptr<Swapchain> m_oldSwapchain;
 };

@@ -75,6 +75,60 @@ static void check_vk_result(VkResult err)
         abort();
 }
 
+struct RenderingConfig {
+    bool vsyncEnabled = true;
+    float maxAnisotropy = 0;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+};
+
+bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDeviceProperties const& physicalDeviceProperties) {
+    auto fps = static_cast<int>(1.0f / dt);
+    bool changed = false;
+
+    ImGui::Begin("Config");
+    std::string frameTimeString = std::to_string(dt * 1000) + " ms";
+    std::string fpsString = std::to_string(fps) + " FPS";
+    ImGui::Text(frameTimeString.c_str());
+    ImGui::Text(fpsString.c_str());
+    {
+        changed |= ImGui::Checkbox("VSync", &config.vsyncEnabled);
+    }
+    {
+        static const std::array labels = { "Trilinear", "2X", "4X", "8X", "16X" };
+        static const std::array values = { 0.0f, 2.0f, 4.0f, 8.0f, 16.0f };
+        static int elem = values.size() - 1;
+        if (ImGui::SliderInt("Anisotropy", &elem, 0, values.size() - 1, labels[elem])) {
+            changed = true;
+            config.maxAnisotropy = values[elem];
+        }
+    }
+    {
+        VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+        // if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
+        // if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
+        // if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
+        // if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
+        // if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
+        // if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
+        static const std::array labels = { "Off", "2", "4", "8", "16", "32", "64" };
+        static const std::array values = { 
+            VK_SAMPLE_COUNT_1_BIT,
+            VK_SAMPLE_COUNT_2_BIT,
+            VK_SAMPLE_COUNT_4_BIT,
+            VK_SAMPLE_COUNT_8_BIT,
+            VK_SAMPLE_COUNT_16_BIT,
+            VK_SAMPLE_COUNT_32_BIT,
+            VK_SAMPLE_COUNT_64_BIT
+        };
+        static int elem = 0;
+        static int elemCount = values.size();
+        changed |= ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem]);
+    }
+    ImGui::End();
+
+    return changed;
+}
+
 int main() {
     uint32_t width = 1024;
     uint32_t height = 768;
@@ -96,9 +150,11 @@ int main() {
         VK_EXT_METAL_SURFACE_EXTENSION_NAME,
         VK_KHR_SURFACE_EXTENSION_NAME,
         "VK_KHR_get_physical_device_properties2",
+        // VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
+        // "VK_KHR_get_surface_capabilities2",
     };
 
-    const std::vector validationLayers = {
+    const std::vector<const char*> validationLayers = {
         "VK_LAYER_KHRONOS_validation"
     };
     if (!checkValidationLayerSupport(validationLayers)) {
@@ -125,19 +181,26 @@ int main() {
         }
     }
 
-    VkSurfaceKHR surface;
-    if (SDL_Vulkan_CreateSurface(window, instance, &surface) != SDL_TRUE) {
-        std::cerr << "Failed to create Vulkan surface: " << SDL_GetError() << std::endl;
-        return -1;
-    }
-
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+    std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
 
-    for (const auto& device : devices) {
+    for (const auto& device : physicalDevices) {
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(device, &props);
+        static std::array typeStrings = {
+            "Other",
+            "Integrated GPU",
+            "Discrete GPU",
+            "Virtual GPU",
+            "CPU"
+        };
+        std::cout << typeStrings[props.deviceType] << ": " << props.deviceName << std::endl;
+    }
+
+    for (const auto& device : physicalDevices) {
         VkPhysicalDeviceFeatures supportedFeatures;
         supportedFeatures.samplerAnisotropy = VK_TRUE;
         vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
@@ -189,6 +252,7 @@ int main() {
         std::vector deviceExtensions = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
             "VK_KHR_portability_subset",
+            // VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
         };
         VkPhysicalDeviceFeatures deviceFeatures{};
         deviceFeatures.samplerAnisotropy = VK_TRUE;
@@ -227,25 +291,31 @@ int main() {
         }
     }
 
+    RenderingConfig config{
+        .vsyncEnabled = true,
+        .maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy,
+    };
+    RenderingConfig stagingConfig = config;
+
     RenderSurface renderSurface({
+        .instance = instance,
         .physicalDevice = physicalDevice,
         .device = device,
-        .surface = surface,
+        .window = window,
         .graphicsQueue = graphicsQueue,
         .presentQueue = graphicsQueue,
         .graphicsQueueFamilyIndex = graphicsQueueFamilyIndex,
         .extent = {width, height},
         .framesInFlight = 3,
-        .vsyncEnabled = false,
-        .msaaSamples = VK_SAMPLE_COUNT_1_BIT,
+        .vsyncEnabled = config.vsyncEnabled,
+        .msaaSamples = config.msaaSamples,
     });
 
     Pipeline pipeline(physicalDevice, device, renderSurface.getExtent(), renderSurface.getRenderPass(), 1024);
     std::vector<MeshObject> meshObjects;
     std::vector<Pipeline::Light> lights;
 
-    float maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy;
-    VkSampler textureSampler = createTextureSampler(device, maxAnisotropy);
+    VkSampler textureSampler = createTextureSampler(device, config.maxAnisotropy);
 
     {
         Model woodenStoolModel = loadObj("resources/wooden_stool_02_4k.obj");
@@ -338,7 +408,7 @@ int main() {
         float dt = std::chrono::duration<float>(now - lastUpdateTime).count();
         dt = glm::min(dt, maxFrameTime);
         lastUpdateTime = now;
-        auto fps = static_cast<int>(1.0f / dt);
+        
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT) {
@@ -378,52 +448,27 @@ int main() {
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-        ImGui::Begin("Config");
-        std::string frameTimeString = std::to_string(dt * 1000) + " ms";
-        std::string fpsString = std::to_string(fps) + " FPS";
-        ImGui::Text(frameTimeString.c_str());
-        ImGui::Text(fpsString.c_str());
-        {
-            static const std::array labels = { "Trilinear", "2X", "4X", "8X", "16X" };
-            static const std::array values = { 0.0f, 2.0f, 4.0f, 8.0f, 16.0f };
-            static int elem = values.size() - 1;
-            if (ImGui::SliderInt("Anisotropy", &elem, 0, values.size() - 1, labels[elem])) {
-                maxAnisotropy = values[elem];
-                textureSampler = createTextureSampler(device, maxAnisotropy);
-                for (auto& obj : meshObjects) {
-                    obj.materialDescriptorSet = transferMaterialToGpu(obj.material, pipeline, textureSampler, obj.textureImageView);
-                }
-            }
-        }
-        {
-            VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
-            // if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
-            // if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
-            // if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
-            // if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
-            // if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
-            // if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
-            static const std::array labels = { "Off", "2", "4", "8", "16", "32", "64" };
-            static const std::array values = { 
-                VK_SAMPLE_COUNT_2_BIT,
-                VK_SAMPLE_COUNT_4_BIT,
-                VK_SAMPLE_COUNT_8_BIT,
-                VK_SAMPLE_COUNT_16_BIT,
-                VK_SAMPLE_COUNT_32_BIT,
-                VK_SAMPLE_COUNT_64_BIT
-            };
-            static int elem = 0;
-            static int elemCount = values.size();
-            if (ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem])) {
-                renderSurface.setMsaaSamples(values[elem]);
-            }
-        }
-        ImGui::End();
+        bool configChanged = renderingConfigGui(stagingConfig, dt, physicalDeviceProperties);
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();
         ImGui_ImplVulkan_RenderDrawData(imguiDrawData, frame.commandBuffer);
 
         renderSurface.endFrame(frame);
+
+        if (configChanged) {
+            vkDeviceWaitIdle(device);
+            RenderingConfig oldConfig = config;
+            config = stagingConfig;
+            if (config.maxAnisotropy != oldConfig.maxAnisotropy) {
+                textureSampler = createTextureSampler(device, config.maxAnisotropy);
+                for (auto& obj : meshObjects) {
+                    obj.materialDescriptorSet = transferMaterialToGpu(obj.material, pipeline, textureSampler, obj.textureImageView);
+                }
+            }
+            if (config.vsyncEnabled != oldConfig.vsyncEnabled) {
+                renderSurface.setVsync(config.vsyncEnabled);
+            }
+        }
     }
 
     // Cleanup
