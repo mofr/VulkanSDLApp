@@ -96,20 +96,16 @@ bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDevicePrope
     {
         static const std::array labels = { "Trilinear", "2X", "4X", "8X", "16X" };
         static const std::array values = { 0.0f, 2.0f, 4.0f, 8.0f, 16.0f };
-        static int elem = values.size() - 1;
+        int elem = 0;
+        for (elem = 0; elem < values.size(); ++elem) {
+            if (config.maxAnisotropy == values[elem]) break;
+        }
         if (ImGui::SliderInt("Anisotropy", &elem, 0, values.size() - 1, labels[elem])) {
             changed = true;
             config.maxAnisotropy = values[elem];
         }
     }
     {
-        VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
-        // if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
-        // if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
-        // if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
-        // if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
-        // if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
-        // if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
         static const std::array labels = { "Off", "2", "4", "8", "16", "32", "64" };
         static const std::array values = { 
             VK_SAMPLE_COUNT_1_BIT,
@@ -120,9 +116,22 @@ bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDevicePrope
             VK_SAMPLE_COUNT_32_BIT,
             VK_SAMPLE_COUNT_64_BIT
         };
-        static int elem = 0;
-        static int elemCount = values.size();
-        changed |= ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem]);
+        int elemCount = 1;
+        VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+        if (counts & VK_SAMPLE_COUNT_2_BIT) { elemCount = 2; }
+        if (counts & VK_SAMPLE_COUNT_4_BIT) { elemCount = 3; }
+        if (counts & VK_SAMPLE_COUNT_8_BIT) { elemCount = 4; }
+        if (counts & VK_SAMPLE_COUNT_16_BIT) { elemCount = 5; }
+        if (counts & VK_SAMPLE_COUNT_32_BIT) { elemCount = 6; }
+        if (counts & VK_SAMPLE_COUNT_64_BIT) { elemCount = 7; }
+        int elem = 0;
+        for (elem = 0; elem < values.size(); ++elem) {
+            if (config.msaaSamples == values[elem]) break;
+        }
+        if (ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem])) {
+            changed = true;
+            config.msaaSamples = values[elem];
+        }
     }
     ImGui::End();
 
@@ -294,6 +303,7 @@ int main() {
     RenderingConfig config{
         .vsyncEnabled = true,
         .maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy,
+        .msaaSamples = VK_SAMPLE_COUNT_4_BIT,
     };
     RenderingConfig stagingConfig = config;
 
@@ -311,7 +321,7 @@ int main() {
         .msaaSamples = config.msaaSamples,
     });
 
-    Pipeline pipeline(physicalDevice, device, renderSurface.getExtent(), renderSurface.getRenderPass(), 1024);
+    Pipeline pipeline(physicalDevice, device, renderSurface.getExtent(), renderSurface.getRenderPass(), 1024, config.msaaSamples);
     std::vector<MeshObject> meshObjects;
     std::vector<Pipeline::Light> lights;
 
@@ -392,7 +402,7 @@ int main() {
         .Subpass = 0,
         .MinImageCount = 2,
         .ImageCount = 2,
-        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+        .MSAASamples = config.msaaSamples,
         .Allocator = nullptr,
         .CheckVkResultFn = check_vk_result,
     };
@@ -467,6 +477,10 @@ int main() {
             }
             if (config.vsyncEnabled != oldConfig.vsyncEnabled) {
                 renderSurface.setVsync(config.vsyncEnabled);
+            }
+            if (config.msaaSamples != oldConfig.msaaSamples) {
+                renderSurface.setMsaaSamples(config.msaaSamples);
+                pipeline.setMsaaSamples(config.msaaSamples);
             }
         }
     }

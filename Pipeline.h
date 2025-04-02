@@ -22,47 +22,15 @@ Descriptor set layouts:
   Binding 1: UBO lights
 */
 class Pipeline {
-    struct ModelTransform {
-        glm::mat4 model;
-    };
-
-    struct ViewProjection {
-        glm::mat4 view;
-        glm::mat4 projection;
-    };
-
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
-
-    VkDescriptorPool descriptorPool;
-    VkDescriptorSetLayout descriptorSetLayoutModelTransform;
-    VkDescriptorSetLayout descriptorSetLayoutMaterial;
-    VkDescriptorSetLayout descriptorSetLayoutViewProjection;
-    VkDescriptorSet descriptorSetViewProjection;
-
-    VkDeviceMemory modelTransformBufferMemory;
-    VkBuffer modelTransformBuffer;
-    std::vector<ModelTransform> modelTransforms;
-    std::vector<VkDescriptorSet> modelTransformDescriptorSets;
-
-    VkDeviceMemory viewProjectionBufferMemory;
-    VkBuffer viewProjectionBuffer;
-
-    VkDeviceMemory lightBlockBufferMemory;
-    VkBuffer lightBlockBuffer;
-
 public:
-    VkPipelineLayout layout;
-    VkPipeline pipeline;
-
-    explicit Pipeline(VkPhysicalDevice physicalDevice, VkDevice device, VkExtent2D extent, VkRenderPass renderPass, uint32_t poolSize) {
+    explicit Pipeline(VkPhysicalDevice physicalDevice, VkDevice device, VkExtent2D extent, VkRenderPass renderPass, uint32_t poolSize, VkSampleCountFlagBits rasterizationSamples) {
         this->physicalDevice = physicalDevice;
         this->device = device;
         descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
         descriptorSetLayoutMaterial = createDescriptorSetLayoutMaterial(device);
         descriptorSetLayoutViewProjection = createDescriptorSetLayoutViewProjection(device);
         layout = createPipelineLayout(device, {descriptorSetLayoutModelTransform, descriptorSetLayoutMaterial, descriptorSetLayoutViewProjection});
-        pipeline = createPipeline(device, extent, renderPass, layout);
+        pipeline = createPipeline(device, extent, renderPass, layout, rasterizationSamples);
 
         descriptorPool = createDescriptorPool(device, poolSize);
         createUniformBuffer(physicalDevice, device, viewProjectionBuffer, viewProjectionBufferMemory, sizeof(ViewProjection));
@@ -70,6 +38,13 @@ public:
         createUniformBuffer(physicalDevice, device, lightBlockBuffer, lightBlockBufferMemory, sizeof(LightBlock));
         descriptorSetViewProjection = createDescriptorSetViewProjection();
         modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
+    }
+
+    void setMsaaSamples(VkSampleCountFlagBits samples) {
+        // TODO
+        // if (samples == m_msaaSamples) return;
+        // m_msaaSamples = samples;
+        // createPipeline();
     }
 
     struct MaterialProps {
@@ -198,6 +173,38 @@ public:
     }
 
 private:
+    struct ModelTransform {
+        glm::mat4 model;
+    };
+
+    struct ViewProjection {
+        glm::mat4 view;
+        glm::mat4 projection;
+    };
+
+    VkPhysicalDevice physicalDevice;
+    VkDevice device;
+
+    VkPipelineLayout layout;
+    VkPipeline pipeline;
+
+    VkDescriptorPool descriptorPool;
+    VkDescriptorSetLayout descriptorSetLayoutModelTransform;
+    VkDescriptorSetLayout descriptorSetLayoutMaterial;
+    VkDescriptorSetLayout descriptorSetLayoutViewProjection;
+    VkDescriptorSet descriptorSetViewProjection;
+
+    VkDeviceMemory modelTransformBufferMemory;
+    VkBuffer modelTransformBuffer;
+    std::vector<ModelTransform> modelTransforms;
+    std::vector<VkDescriptorSet> modelTransformDescriptorSets;
+
+    VkDeviceMemory viewProjectionBufferMemory;
+    VkBuffer viewProjectionBuffer;
+
+    VkDeviceMemory lightBlockBufferMemory;
+    VkBuffer lightBlockBuffer;
+
     VkDescriptorSet createMaterialDescriptorSet() const {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -388,7 +395,7 @@ private:
         return pipelineLayout;
     }
 
-    static VkPipeline createPipeline(VkDevice device, VkExtent2D extent, VkRenderPass renderPass, VkPipelineLayout pipelineLayout) {
+    static VkPipeline createPipeline(VkDevice device, VkExtent2D extent, VkRenderPass renderPass, VkPipelineLayout pipelineLayout, VkSampleCountFlagBits rasterizationSamples) {
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -478,7 +485,7 @@ private:
         VkPipelineMultisampleStateCreateInfo multisampling{};
         multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
         multisampling.sampleShadingEnable = VK_FALSE;
-        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisampling.rasterizationSamples = rasterizationSamples;
 
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.blendEnable = VK_FALSE;
