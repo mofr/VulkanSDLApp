@@ -321,7 +321,14 @@ int main() {
         .msaaSamples = config.msaaSamples,
     });
 
-    Pipeline pipeline(physicalDevice, device, renderSurface.getExtent(), renderSurface.getRenderPass(), 1024, config.msaaSamples);
+    Pipeline pipeline(
+        physicalDevice,
+        device,
+        renderSurface.getExtent(),
+        renderSurface.getRenderPass(),
+        renderSurface.getMsaaSamples(),
+        1024
+    );
     std::vector<MeshObject> meshObjects;
     std::vector<Pipeline::Light> lights;
 
@@ -386,9 +393,8 @@ int main() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGui_ImplSDL2_InitForVulkan(window);
     ImGui_ImplVulkan_InitInfo init_info {
         .Instance = instance,
@@ -418,7 +424,7 @@ int main() {
         float dt = std::chrono::duration<float>(now - lastUpdateTime).count();
         dt = glm::min(dt, maxFrameTime);
         lastUpdateTime = now;
-        
+
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT) {
@@ -480,7 +486,26 @@ int main() {
             }
             if (config.msaaSamples != oldConfig.msaaSamples) {
                 renderSurface.setMsaaSamples(config.msaaSamples);
-                pipeline.setMsaaSamples(config.msaaSamples);
+                pipeline.setMsaaSamples(config.msaaSamples, renderSurface.getRenderPass());
+
+                ImGui_ImplVulkan_Shutdown();
+                ImGui_ImplVulkan_InitInfo init_info {
+                    .Instance = instance,
+                    .PhysicalDevice = physicalDevice,
+                    .Device = device,
+                    .QueueFamily = graphicsQueueFamilyIndex,
+                    .Queue = graphicsQueue,
+                    .PipelineCache = nullptr,
+                    .DescriptorPoolSize = 2,
+                    .RenderPass = renderSurface.getRenderPass(),
+                    .Subpass = 0,
+                    .MinImageCount = 2,
+                    .ImageCount = 2,
+                    .MSAASamples = config.msaaSamples,
+                    .Allocator = nullptr,
+                    .CheckVkResultFn = check_vk_result,
+                };
+                ImGui_ImplVulkan_Init(&init_info);
             }
         }
     }

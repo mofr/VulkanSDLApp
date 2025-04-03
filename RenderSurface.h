@@ -174,6 +174,7 @@ public:
     VkFormat getDepthFormat() const { return m_depthFormat; }
     uint32_t getImageCount() const { return m_framesInFlight; }
     VkRenderPass getRenderPass() const { return m_renderPass; }
+    VkSampleCountFlagBits getMsaaSamples() const { return m_msaaSamples; }
     
     // Config changes
     void setVsync(bool enabled) {
@@ -181,9 +182,12 @@ public:
         m_vsyncEnabled = enabled;
         recreateSwapchain();
     }
+
     void setMsaaSamples(VkSampleCountFlagBits samples) {
         if (samples == m_msaaSamples) return;
         m_msaaSamples = samples;
+        vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+        createRenderPass();
         recreateSwapchain();
     }
 

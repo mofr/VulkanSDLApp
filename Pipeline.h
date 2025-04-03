@@ -23,28 +23,40 @@ Descriptor set layouts:
 */
 class Pipeline {
 public:
-    explicit Pipeline(VkPhysicalDevice physicalDevice, VkDevice device, VkExtent2D extent, VkRenderPass renderPass, uint32_t poolSize, VkSampleCountFlagBits rasterizationSamples) {
-        this->physicalDevice = physicalDevice;
-        this->device = device;
-        descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
-        descriptorSetLayoutMaterial = createDescriptorSetLayoutMaterial(device);
-        descriptorSetLayoutViewProjection = createDescriptorSetLayoutViewProjection(device);
-        layout = createPipelineLayout(device, {descriptorSetLayoutModelTransform, descriptorSetLayoutMaterial, descriptorSetLayoutViewProjection});
-        pipeline = createPipeline(device, extent, renderPass, layout, rasterizationSamples);
+    explicit Pipeline(
+        VkPhysicalDevice physicalDevice,
+        VkDevice device, 
+        VkExtent2D extent, 
+        VkRenderPass renderPass, 
+        VkSampleCountFlagBits msaaSamples,
+        uint32_t poolSize
+    ):
+        m_msaaSamples(msaaSamples),
+        m_extent(extent),
+        m_renderPass(renderPass)
+    {
+        m_physicalDevice = physicalDevice;
+        m_device = device;
+        m_descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
+        m_descriptorSetLayoutMaterial = createDescriptorSetLayoutMaterial(device);
+        m_descriptorSetLayoutViewProjection = createDescriptorSetLayoutViewProjection(device);
+        m_layout = createPipelineLayout(device, {m_descriptorSetLayoutModelTransform, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutViewProjection});
+        m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
 
-        descriptorPool = createDescriptorPool(device, poolSize);
-        createUniformBuffer(physicalDevice, device, viewProjectionBuffer, viewProjectionBufferMemory, sizeof(ViewProjection));
-        createUniformBuffer(physicalDevice, device, modelTransformBuffer, modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
-        createUniformBuffer(physicalDevice, device, lightBlockBuffer, lightBlockBufferMemory, sizeof(LightBlock));
-        descriptorSetViewProjection = createDescriptorSetViewProjection();
-        modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
+        m_descriptorPool = createDescriptorPool(device, poolSize);
+        createUniformBuffer(physicalDevice, device, m_viewProjectionBuffer, m_viewProjectionBufferMemory, sizeof(ViewProjection));
+        createUniformBuffer(physicalDevice, device, m_modelTransformBuffer, m_modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
+        createUniformBuffer(physicalDevice, device, m_lightBlockBuffer, m_lightBlockBufferMemory, sizeof(LightBlock));
+        m_descriptorSetViewProjection = createDescriptorSetViewProjection();
+        m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
 
-    void setMsaaSamples(VkSampleCountFlagBits samples) {
-        // TODO
-        // if (samples == m_msaaSamples) return;
-        // m_msaaSamples = samples;
-        // createPipeline();
+    void setMsaaSamples(VkSampleCountFlagBits samples, VkRenderPass renderPass) {
+        if (samples == m_msaaSamples && renderPass == m_renderPass) return;
+        m_msaaSamples = samples;
+        m_renderPass = renderPass;
+        vkDestroyPipeline(m_device, m_pipeline, nullptr);
+        m_pipeline = createPipeline(m_device, m_extent, m_renderPass, m_layout, m_msaaSamples);
     }
 
     struct MaterialProps {
@@ -76,16 +88,16 @@ public:
         std::vector<Light> const& lights
     ) {
         // TODO sort by Z to reduce overdraw?
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
         {
             ViewProjection vp{};
             vp.view = view;
             vp.projection = projection;
             // TODO use persistently mapped buffers instead
             void* data;
-            vkMapMemory(device, viewProjectionBufferMemory, 0, sizeof(vp), 0, &data);
+            vkMapMemory(m_device, m_viewProjectionBufferMemory, 0, sizeof(vp), 0, &data);
             memcpy(data, &vp, sizeof(vp));
-            vkUnmapMemory(device, viewProjectionBufferMemory);
+            vkUnmapMemory(m_device, m_viewProjectionBufferMemory);
         }
         {
             LightBlock lightBlock{};
@@ -94,28 +106,28 @@ public:
                 lightBlock.lights[i] = lights[i];
             }
             void* data;
-            vkMapMemory(device, lightBlockBufferMemory, 0, sizeof(lightBlock), 0, &data);
+            vkMapMemory(m_device, m_lightBlockBufferMemory, 0, sizeof(lightBlock), 0, &data);
             memcpy(data, &lightBlock, sizeof(lightBlock));
-            vkUnmapMemory(device, lightBlockBufferMemory);
+            vkUnmapMemory(m_device, m_lightBlockBufferMemory);
         }
         {
-            modelTransforms.reserve(objects.size());
-            modelTransforms.clear();
-            for (auto const& object : objects) {modelTransforms.push_back({object.getTransform()});}
+            m_modelTransforms.reserve(objects.size());
+            m_modelTransforms.clear();
+            for (auto const& object : objects) {m_modelTransforms.push_back({object.getTransform()});}
             void* data;
-            vkMapMemory(device, modelTransformBufferMemory, 0, modelTransforms.size() * sizeof(ModelTransform), 0, &data);
-            memcpy(data, modelTransforms.data(), modelTransforms.size() * sizeof(ModelTransform));
-            vkUnmapMemory(device, modelTransformBufferMemory);
+            vkMapMemory(m_device, m_modelTransformBufferMemory, 0, m_modelTransforms.size() * sizeof(ModelTransform), 0, &data);
+            memcpy(data, m_modelTransforms.data(), m_modelTransforms.size() * sizeof(ModelTransform));
+            vkUnmapMemory(m_device, m_modelTransformBufferMemory);
         }
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &descriptorSetViewProjection, 0, nullptr);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 2, 1, &m_descriptorSetViewProjection, 0, nullptr);
 
         // TODO group by vertex buffer and material
         for (uint32_t i = 0; i < objects.size(); i++) {
             auto const& object = objects[i];
-            VkDescriptorSet transformDescriptorSet = modelTransformDescriptorSets[i];
+            VkDescriptorSet transformDescriptorSet = m_modelTransformDescriptorSets[i];
             std::array descriptorSets = {transformDescriptorSet, object.materialDescriptorSet};
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
             VkBuffer vertexBuffers[] = { object.vertexBuffer };
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
@@ -126,12 +138,12 @@ public:
     VkDescriptorSet createMaterial(VkImageView textureImageView, VkSampler textureSampler, MaterialProps const& props) {
         VkDeviceMemory materialPropsBufferMemory;
         VkBuffer materialPropsBuffer;
-        createUniformBuffer(physicalDevice, device, materialPropsBuffer, materialPropsBufferMemory, sizeof(MaterialProps));
+        createUniformBuffer(m_physicalDevice, m_device, materialPropsBuffer, materialPropsBufferMemory, sizeof(MaterialProps));
         {
             void* data;
-            vkMapMemory(device, materialPropsBufferMemory, 0, sizeof(props), 0, &data);
+            vkMapMemory(m_device, materialPropsBufferMemory, 0, sizeof(props), 0, &data);
             memcpy(data, &props, sizeof(props));
-            vkUnmapMemory(device, materialPropsBufferMemory);
+            vkUnmapMemory(m_device, materialPropsBufferMemory);
         }
         VkDescriptorSet materialDescriptorSet = createMaterialDescriptorSet();
         {
@@ -163,7 +175,7 @@ public:
                     .pBufferInfo = &materialPropsBufferInfo,
                 },
             };
-            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+            vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         }
         return materialDescriptorSet;
     }
@@ -182,49 +194,53 @@ private:
         glm::mat4 projection;
     };
 
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
+    VkPhysicalDevice m_physicalDevice;
+    VkDevice m_device;
 
-    VkPipelineLayout layout;
-    VkPipeline pipeline;
+    VkPipelineLayout m_layout;
+    VkPipeline m_pipeline;
 
-    VkDescriptorPool descriptorPool;
-    VkDescriptorSetLayout descriptorSetLayoutModelTransform;
-    VkDescriptorSetLayout descriptorSetLayoutMaterial;
-    VkDescriptorSetLayout descriptorSetLayoutViewProjection;
-    VkDescriptorSet descriptorSetViewProjection;
+    VkDescriptorPool m_descriptorPool;
+    VkDescriptorSetLayout m_descriptorSetLayoutModelTransform;
+    VkDescriptorSetLayout m_descriptorSetLayoutMaterial;
+    VkDescriptorSetLayout m_descriptorSetLayoutViewProjection;
+    VkDescriptorSet m_descriptorSetViewProjection;
 
-    VkDeviceMemory modelTransformBufferMemory;
-    VkBuffer modelTransformBuffer;
-    std::vector<ModelTransform> modelTransforms;
-    std::vector<VkDescriptorSet> modelTransformDescriptorSets;
+    VkDeviceMemory m_modelTransformBufferMemory;
+    VkBuffer m_modelTransformBuffer;
+    std::vector<ModelTransform> m_modelTransforms;
+    std::vector<VkDescriptorSet> m_modelTransformDescriptorSets;
 
-    VkDeviceMemory viewProjectionBufferMemory;
-    VkBuffer viewProjectionBuffer;
+    VkDeviceMemory m_viewProjectionBufferMemory;
+    VkBuffer m_viewProjectionBuffer;
 
-    VkDeviceMemory lightBlockBufferMemory;
-    VkBuffer lightBlockBuffer;
+    VkDeviceMemory m_lightBlockBufferMemory;
+    VkBuffer m_lightBlockBuffer;
+
+    VkSampleCountFlagBits m_msaaSamples;
+    VkExtent2D m_extent;
+    VkRenderPass m_renderPass;
 
     VkDescriptorSet createMaterialDescriptorSet() const {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorPool = m_descriptorPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorSetLayoutMaterial;
+        allocInfo.pSetLayouts = &m_descriptorSetLayoutMaterial;
         VkDescriptorSet descriptorSet;
-        vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
+        vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
         return descriptorSet;
     }
 
     std::vector<VkDescriptorSet> createDescriptorSetsModelTransforms(uint32_t count) {
-        std::vector layouts(count, descriptorSetLayoutModelTransform);
+        std::vector layouts(count, m_descriptorSetLayoutModelTransform);
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorPool = m_descriptorPool;
         allocInfo.descriptorSetCount = count;
         allocInfo.pSetLayouts = layouts.data();
         std::vector<VkDescriptorSet> descriptorSets(count);
-        vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data());
+        vkAllocateDescriptorSets(m_device, &allocInfo, descriptorSets.data());
 
         {
             std::vector<VkWriteDescriptorSet> writes;
@@ -233,7 +249,7 @@ private:
             bufferInfos.reserve(count);
             for (uint32_t i = 0; i < count; i++) {
                 VkDescriptorBufferInfo bufferInfo{};
-                bufferInfo.buffer = modelTransformBuffer;
+                bufferInfo.buffer = m_modelTransformBuffer;
                 bufferInfo.offset = i * sizeof(ModelTransform);
                 bufferInfo.range = sizeof(ModelTransform);
 
@@ -248,7 +264,7 @@ private:
                     .pBufferInfo = bufferInfos.data() + i,
                 });
             };
-            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+            vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         }
         return descriptorSets;
     }
@@ -256,19 +272,19 @@ private:
     VkDescriptorSet createDescriptorSetViewProjection() {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorPool = m_descriptorPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorSetLayoutViewProjection;
+        allocInfo.pSetLayouts = &m_descriptorSetLayoutViewProjection;
         VkDescriptorSet descriptorSet;
-        vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
+        vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
         {
             VkDescriptorBufferInfo viewProjectionBufferInfo{
-                .buffer = viewProjectionBuffer,
+                .buffer = m_viewProjectionBuffer,
                 .offset = 0,
                 .range = sizeof(ViewProjection)
             };
             VkDescriptorBufferInfo lightBlockBufferInfo{
-                .buffer = lightBlockBuffer,
+                .buffer = m_lightBlockBuffer,
                 .offset = 0,
                 .range = sizeof(LightBlock)
             };
@@ -292,7 +308,7 @@ private:
                     .pBufferInfo = &lightBlockBufferInfo,
                 },
             };
-            vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+            vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         }
         return descriptorSet;
     }
