@@ -39,30 +39,32 @@ VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeli
     return pipeline.createMaterial(textureImageView, sampler, materialProps);
 }
 
-MeshObject transferModelToGpu(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, VkSampler textureSampler, Pipeline& pipeline, const Model& model) {
+MeshObject transferModelToGpu(VkPhysicalDevice physicalDevice, VkDevice device, VkCommandPool commandPool, VkQueue queue, float maxAnisotropy, Pipeline& pipeline, const Model& model) {
     MeshObject object{};
     object.vertexBuffer = createVertexBuffer(physicalDevice, device, model.vertices);
     object.vertexCount = model.vertices.size();
+    ImageData imageData;
     if (model.material.diffuseTexture.empty()) {
-        ImageData whitePixel;
         uint8_t * whitePixelData = (uint8_t*) malloc(4);
         whitePixelData[0] = 255;
         whitePixelData[1] = 255;
         whitePixelData[2] = 255;
         whitePixelData[3] = 255;
-        whitePixel.data.reset((void*) whitePixelData);
-        whitePixel.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
-        whitePixel.dataSize = 4;
-        whitePixel.width = 1;
-        whitePixel.height = 1;
-        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, whitePixel);
+        imageData.data.reset((void*) whitePixelData);
+        imageData.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+        imageData.dataSize = 4;
+        imageData.width = 1;
+        imageData.height = 1;
     }
     else {
-        object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, model.material.diffuseTexture);
+        imageData = loadImage(model.material.diffuseTexture);
     }
-    object.textureImageView = createImageView(device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+    object.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(imageData.width, imageData.height)))) + 1;
+    object.textureImage = createTextureImage(physicalDevice, device, commandPool, queue, imageData, object.mipLevels);
+    object.textureImageView = createImageView(device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB, object.mipLevels);
     object.material = model.material;
-    object.materialDescriptorSet = transferMaterialToGpu(model.material, pipeline, textureSampler, object.textureImageView);
+    object.textureSampler = createTextureSampler(device, maxAnisotropy, object.mipLevels);
+    object.materialDescriptorSet = transferMaterialToGpu(model.material, pipeline, object.textureSampler, object.textureImageView);
     return object;
 }
 
@@ -332,13 +334,11 @@ int main() {
     std::vector<MeshObject> meshObjects;
     std::vector<Pipeline::Light> lights;
 
-    VkSampler textureSampler = createTextureSampler(device, config.maxAnisotropy);
-
     {
         Model woodenStoolModel = loadObj("resources/wooden_stool_02_4k.obj");
         woodenStoolModel.material.specularHardness = 500;
         woodenStoolModel.material.specularPower = 5;
-        MeshObject woodenStool = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, woodenStoolModel);
+        MeshObject woodenStool = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, config.maxAnisotropy, pipeline, woodenStoolModel);
         meshObjects.push_back(woodenStool);
     }
 
@@ -347,7 +347,7 @@ int main() {
         lightModel1.vertices = createSphereMesh(2, 0.05);
         lightModel1.material.diffuseFactor = glm::vec3{0.0f};
         lightModel1.material.emitFactor = glm::vec3{1.0f, 0.5f, 0.5f};
-        MeshObject lightObj1 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel1);
+        MeshObject lightObj1 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, config.maxAnisotropy, pipeline, lightModel1);
         lightObj1.position = {-1.5f, 1.0f, 1.0f};
         meshObjects.push_back(lightObj1);
         lights.push_back(Pipeline::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}});
@@ -358,7 +358,7 @@ int main() {
         lightModel2.vertices = createSphereMesh(2, 0.05);
         lightModel2.material.diffuseFactor = glm::vec3{0.0f};
         lightModel2.material.emitFactor = glm::vec3{0.5f, 0.5f, 1.0f};
-        MeshObject lightObj2 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, lightModel2);
+        MeshObject lightObj2 = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, config.maxAnisotropy, pipeline, lightModel2);
         lightObj2.position = {1.5f, 1.0f, 1.0f};
         meshObjects.push_back(lightObj2);
         lights.push_back(Pipeline::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}});
@@ -377,7 +377,7 @@ int main() {
         Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.5f, 0.5f, 0.5f}};
         Model model{vertices, floorMaterial};
         MeshObject floorObj;
-        floorObj = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, textureSampler, pipeline, model);
+        floorObj = transferModelToGpu(physicalDevice, device, commandPool, graphicsQueue, config.maxAnisotropy, pipeline, model);
         meshObjects.push_back(floorObj);
     }
 
@@ -476,9 +476,9 @@ int main() {
             RenderingConfig oldConfig = config;
             config = stagingConfig;
             if (config.maxAnisotropy != oldConfig.maxAnisotropy) {
-                textureSampler = createTextureSampler(device, config.maxAnisotropy);
                 for (auto& obj : meshObjects) {
-                    obj.materialDescriptorSet = transferMaterialToGpu(obj.material, pipeline, textureSampler, obj.textureImageView);
+                    obj.textureSampler = createTextureSampler(device, config.maxAnisotropy, obj.mipLevels);
+                    obj.materialDescriptorSet = transferMaterialToGpu(obj.material, pipeline, obj.textureSampler, obj.textureImageView);
                 }
             }
             if (config.vsyncEnabled != oldConfig.vsyncEnabled) {

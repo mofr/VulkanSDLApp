@@ -5,3 +5,7 @@
 - Build to web
 - Mipmaps
 - Separate presentation (swapchain) and rendering. Do not render directly to swapchain images.
+- Shadow maps
+- Use vk-bootstrap
+- vulkan.h vs vulkan.hpp
+- Get rid of compilation warnings

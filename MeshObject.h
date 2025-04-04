@@ -5,8 +5,11 @@
 struct MeshObject {
     uint32_t vertexCount;
     VkBuffer vertexBuffer;
+
     VkImage textureImage;
     VkImageView textureImageView;
+    VkSampler textureSampler;
+    uint32_t mipLevels;
 
     Material material;
     VkDescriptorSet materialDescriptorSet;
