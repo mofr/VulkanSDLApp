@@ -157,7 +157,7 @@ VkImageView createImageView(VkDevice device, VkImage image, VkFormat format, uin
     viewInfo.format = format;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.levelCount = mipLevels;
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
 
@@ -334,7 +334,6 @@ VkPipelineStageFlags getPipelineStageFlags(VkImageLayout layout)
 }
 
 void transitionImageLayout(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t baseMipLevel = 0, uint32_t mipLevels = 1) {
-    std::cout << "transition " << baseMipLevel << "-" << baseMipLevel + mipLevels << " from " << string_VkImageLayout(oldLayout) << " to " << string_VkImageLayout(newLayout) << std::endl;
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;

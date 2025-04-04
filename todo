@@ -3,7 +3,6 @@
 - Reduce main function size
 - Implement normal mapping
 - Build to web
-- Mipmaps
 - Separate presentation (swapchain) and rendering. Do not render directly to swapchain images.
 - Shadow maps
 - Use vk-bootstrap

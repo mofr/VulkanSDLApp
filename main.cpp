@@ -81,6 +81,7 @@ struct RenderingConfig {
     bool vsyncEnabled = true;
     float maxAnisotropy = 0;
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    bool useMipMaps = true;
 };
 
 bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDeviceProperties const& physicalDeviceProperties) {
@@ -92,9 +93,10 @@ bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDevicePrope
     std::string fpsString = std::to_string(fps) + " FPS";
     ImGui::Text(frameTimeString.c_str());
     ImGui::Text(fpsString.c_str());
-    {
-        changed |= ImGui::Checkbox("VSync", &config.vsyncEnabled);
-    }
+    
+    changed |= ImGui::Checkbox("VSync", &config.vsyncEnabled);
+    changed |= ImGui::Checkbox("Use mipmaps", &config.useMipMaps);
+
     {
         static const std::array labels = { "Trilinear", "2X", "4X", "8X", "16X" };
         static const std::array values = { 0.0f, 2.0f, 4.0f, 8.0f, 16.0f };
@@ -475,9 +477,9 @@ int main() {
             vkDeviceWaitIdle(device);
             RenderingConfig oldConfig = config;
             config = stagingConfig;
-            if (config.maxAnisotropy != oldConfig.maxAnisotropy) {
+            if (config.maxAnisotropy != oldConfig.maxAnisotropy || config.useMipMaps != oldConfig.useMipMaps) {
                 for (auto& obj : meshObjects) {
-                    obj.textureSampler = createTextureSampler(device, config.maxAnisotropy, obj.mipLevels);
+                    obj.textureSampler = createTextureSampler(device, config.maxAnisotropy, config.useMipMaps ? obj.mipLevels : 0);
                     obj.materialDescriptorSet = transferMaterialToGpu(obj.material, pipeline, obj.textureSampler, obj.textureImageView);
                 }
             }
