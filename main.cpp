@@ -91,8 +91,8 @@ bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDevicePrope
     ImGui::Begin("Config");
     std::string frameTimeString = std::to_string(dt * 1000) + " ms";
     std::string fpsString = std::to_string(fps) + " FPS";
-    ImGui::Text(frameTimeString.c_str());
-    ImGui::Text(fpsString.c_str());
+    ImGui::Text("%s", frameTimeString.c_str());
+    ImGui::Text("%s", fpsString.c_str());
     
     changed |= ImGui::Checkbox("VSync", &config.vsyncEnabled);
     changed |= ImGui::Checkbox("Use mipmaps", &config.useMipMaps);
@@ -100,11 +100,12 @@ bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDevicePrope
     {
         static const std::array labels = { "Trilinear", "2X", "4X", "8X", "16X" };
         static const std::array values = { 0.0f, 2.0f, 4.0f, 8.0f, 16.0f };
+        int count = values.size();
         int elem = 0;
-        for (elem = 0; elem < values.size(); ++elem) {
+        for (elem = 0; elem < count; ++elem) {
             if (config.maxAnisotropy == values[elem]) break;
         }
-        if (ImGui::SliderInt("Anisotropy", &elem, 0, values.size() - 1, labels[elem])) {
+        if (ImGui::SliderInt("Anisotropy", &elem, 0, count - 1, labels[elem])) {
             changed = true;
             config.maxAnisotropy = values[elem];
         }
@@ -129,7 +130,7 @@ bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDevicePrope
         if (counts & VK_SAMPLE_COUNT_32_BIT) { elemCount = 6; }
         if (counts & VK_SAMPLE_COUNT_64_BIT) { elemCount = 7; }
         int elem = 0;
-        for (elem = 0; elem < values.size(); ++elem) {
+        for (elem = 0; elem < elemCount; ++elem) {
             if (config.msaaSamples == values[elem]) break;
         }
         if (ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem])) {
@@ -408,8 +409,8 @@ int main() {
         .DescriptorPoolSize = 2,
         .RenderPass = renderSurface.getRenderPass(),
         .Subpass = 0,
-        .MinImageCount = 2,
-        .ImageCount = 2,
+        .MinImageCount = 3,
+        .ImageCount = 3,
         .MSAASamples = config.msaaSamples,
         .Allocator = nullptr,
         .CheckVkResultFn = check_vk_result,
@@ -470,6 +471,7 @@ int main() {
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();
         ImGui_ImplVulkan_RenderDrawData(imguiDrawData, frame.commandBuffer);
+        // std::cout << "draw imgui done" << std::endl;
 
         renderSurface.endFrame(frame);
 

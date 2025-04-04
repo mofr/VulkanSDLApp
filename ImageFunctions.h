@@ -31,7 +31,7 @@ ImageData loadImage(std::string const& filename) {
         }
         size_t dataSize = static_cast<size_t>(width * height * 4);
         uint8_t *rgba8 = (uint8_t*) malloc(dataSize);
-        for (int i = 0; i < dataSize; ++i) {
+        for (size_t i = 0; i < dataSize; ++i) {
             rgba8[i] = static_cast<uint8_t> (rgba[i] * 255);
         }
         free(rgba);

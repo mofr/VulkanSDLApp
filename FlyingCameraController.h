@@ -11,7 +11,7 @@ class FlyingCameraController : public CameraController
 public:
     FlyingCameraController(float movementSpeed = 1.0f, float mouseSensitivity = 0.3f): movementSpeed(movementSpeed), mouseSensitivity(mouseSensitivity) {}
 
-    void update(Camera& camera, const SDL_Event& event, float deltaTime) {
+    void update(Camera& camera, const SDL_Event& event, [[maybe_unused]] float deltaTime) override {
         if (event.type == SDL_MOUSEMOTION) {
             float xOffset = -event.motion.xrel * mouseSensitivity;
             float yOffset = -event.motion.yrel * mouseSensitivity;
@@ -21,7 +21,7 @@ public:
         }
     }
 
-    void update(Camera& camera, float deltaTime) {
+    void update(Camera& camera, float deltaTime) override {
         const uint8_t* keyState = SDL_GetKeyboardState(nullptr);
         float speed = movementSpeed;
         if (keyState[SDL_SCANCODE_LSHIFT]) {

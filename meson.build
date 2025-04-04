@@ -1,6 +1,6 @@
 project('VulkanSDLApp', 'cpp', 'c',
         version : '1.0.0',
-        default_options : ['warning_level=3', 'cpp_std=c++20'])
+        default_options : ['cpp_std=c++20', 'warning_level=3', 'werror=true'])
 
 vertex_shader_src = 'shader.vertex.glsl'
 fragment_shader_src = 'shader.fragment.glsl'

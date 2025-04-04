@@ -15,7 +15,7 @@ public:
         this->lookAtPos = lookAtPos;
     }
 
-    void update(Camera & camera, const SDL_Event & event, float deltaTime) {
+    void update(Camera & camera, const SDL_Event & event, [[maybe_unused]] float deltaTime) override {
         if (event.type == SDL_MOUSEMOTION) {
             float normalizedX = static_cast<float>(event.motion.x) / windowWidth - 0.5f;
             cameraAngle = -normalizedX * 360.0f * 4;
@@ -25,11 +25,10 @@ public:
 
             glm::vec3 pos = glm::rotate(glm::mat4(1.0f), glm::radians(cameraAngle), up) * glm::vec4(initialPos * zoom, 1.0f);
             camera.setPosition(pos);
-            
         }
     }
 
-    void update(Camera& camera, float deltaTime) {
+    void update(Camera& camera, [[maybe_unused]] float deltaTime) override {
         camera.lookAt(lookAtPos);
     }
 

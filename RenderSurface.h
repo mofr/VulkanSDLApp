@@ -41,18 +41,18 @@ public:
 
     RenderSurface(const CreateArgs& args): 
         m_instance(args.instance),
-        m_device(args.device),
         m_physicalDevice(args.physicalDevice),
+        m_device(args.device),
         m_window(args.window),
         m_graphicsQueue(args.graphicsQueue),
         m_presentQueue(args.presentQueue),
+        m_vsyncEnabled(args.vsyncEnabled),
+        m_msaaSamples(args.msaaSamples),
+        m_framesInFlight(args.framesInFlight),
         m_framebuffers(args.framesInFlight),
-        m_commandBuffers(args.framesInFlight),
         m_renderFinishedSemaphores(args.framesInFlight),
         m_renderFences(args.framesInFlight),
-        m_framesInFlight(args.framesInFlight),
-        m_vsyncEnabled(args.vsyncEnabled),
-        m_msaaSamples(args.msaaSamples)
+        m_commandBuffers(args.framesInFlight)
     {
         if (SDL_Vulkan_CreateSurface(m_window, m_instance, &m_surface) != SDL_TRUE) {
             std::cerr << SDL_GetError() << std::endl;
@@ -200,7 +200,6 @@ private:
     VkQueue m_graphicsQueue;
     VkQueue m_presentQueue;
     VkRenderPass m_renderPass;
-    std::vector<VkCommandBuffer> m_commandBuffers;
     VkCommandPool m_commandPool;
     std::unique_ptr<Swapchain> m_swapchain;
     bool m_vsyncEnabled;
@@ -218,13 +217,12 @@ private:
     VkImageView m_colorImageView = VK_NULL_HANDLE;
     
     // Framebuffers
-    std::vector<VkFramebuffer> m_framebuffers;
-    
-    // Synchronization
-    std::vector<VkSemaphore> m_renderFinishedSemaphores;
-    std::vector<VkFence> m_renderFences;
     uint32_t m_framesInFlight;
     uint32_t m_currentFrame = 0;
+    std::vector<VkFramebuffer> m_framebuffers;
+    std::vector<VkSemaphore> m_renderFinishedSemaphores;
+    std::vector<VkFence> m_renderFences;
+    std::vector<VkCommandBuffer> m_commandBuffers;
 
     void createDepthImage(VkExtent2D extent) {
         m_depthFormat = findDepthFormat(m_physicalDevice);
