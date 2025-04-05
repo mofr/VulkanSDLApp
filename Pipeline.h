@@ -44,10 +44,6 @@ public:
         m_layout = createPipelineLayout(device, {m_descriptorSetLayoutModelTransform, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutViewProjection});
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
 
-        m_descriptorPool = createDescriptorPool(device, poolSize);
-        m_descriptorSetViewProjection = createDescriptorSetViewProjection();
-        m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
-
         createUniformBuffer(physicalDevice, device, m_viewProjectionBuffer, m_viewProjectionBufferMemory, sizeof(ViewProjection));
         createUniformBuffer(physicalDevice, device, m_lightBlockBuffer, m_lightBlockBufferMemory, sizeof(LightBlock));
         createUniformBuffer(physicalDevice, device, m_modelTransformBuffer, m_modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
@@ -58,6 +54,10 @@ public:
             vkMapMemory(m_device, m_modelTransformBufferMemory, 0, sizeof(ModelTransform) * poolSize, 0, (void**)&modelTransforms);
             m_modelTransforms = {modelTransforms, poolSize};
         }
+
+        m_descriptorPool = createDescriptorPool(device, poolSize);
+        m_descriptorSetViewProjection = createDescriptorSetViewProjection();
+        m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
 
     void setMsaaSamples(VkSampleCountFlagBits samples, VkRenderPass renderPass) {
