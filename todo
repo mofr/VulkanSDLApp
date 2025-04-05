@@ -1,9 +1,20 @@
-- Prettier uniform buffers copies (placement new?)
+Rendering 
 - Animate lights (position and color/intensity)
-- Reduce main function size
 - Implement normal mapping
-- Build to web
-- Separate presentation (swapchain) and rendering. Do not render directly to swapchain images.
+- Implement PBR
 - Shadow maps
+
+Organizational
+- Reduce main function size
 - Use vk-bootstrap
 - vulkan.h vs vulkan.hpp
+- Type safe uniform buffer creation and mapping:
+  - UniformBuffer<Thing> thingBuffer;
+  - thingBuffer.data = Thing{};  // data is Thing&
+  - UniformBufferArray<Thing> thingBuffer(3);
+  - thingsBuffer.data[0] = Thing{};  // data is std::span<Thing>
+
+Other
+- gltf
+- Build to web
+- Separate presentation (swapchain) and rendering. Do not render directly to swapchain images.

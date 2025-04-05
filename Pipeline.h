@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <span>
 #include <vulkan/vulkan.h>
 
 #include "Vertex.h"
@@ -44,11 +45,19 @@ public:
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
 
         m_descriptorPool = createDescriptorPool(device, poolSize);
-        createUniformBuffer(physicalDevice, device, m_viewProjectionBuffer, m_viewProjectionBufferMemory, sizeof(ViewProjection));
-        createUniformBuffer(physicalDevice, device, m_modelTransformBuffer, m_modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
-        createUniformBuffer(physicalDevice, device, m_lightBlockBuffer, m_lightBlockBufferMemory, sizeof(LightBlock));
         m_descriptorSetViewProjection = createDescriptorSetViewProjection();
         m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
+
+        createUniformBuffer(physicalDevice, device, m_viewProjectionBuffer, m_viewProjectionBufferMemory, sizeof(ViewProjection));
+        createUniformBuffer(physicalDevice, device, m_lightBlockBuffer, m_lightBlockBufferMemory, sizeof(LightBlock));
+        createUniformBuffer(physicalDevice, device, m_modelTransformBuffer, m_modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
+        {
+            vkMapMemory(m_device, m_viewProjectionBufferMemory, 0, sizeof(m_viewProjection), 0, (void**)&m_viewProjection);
+            vkMapMemory(m_device, m_lightBlockBufferMemory, 0, sizeof(m_lightBlock), 0, (void**)&m_lightBlock);
+            ModelTransform* modelTransforms;
+            vkMapMemory(m_device, m_modelTransformBufferMemory, 0, sizeof(ModelTransform) * poolSize, 0, (void**)&modelTransforms);
+            m_modelTransforms = {modelTransforms, poolSize};
+        }
     }
 
     void setMsaaSamples(VkSampleCountFlagBits samples, VkRenderPass renderPass) {
@@ -76,7 +85,7 @@ public:
     };
 
     struct LightBlock {
-        Light lights[8];
+        std::array<Light, 8> lights;
         int lightCount;
     };
 
@@ -89,35 +98,11 @@ public:
     ) {
         // TODO sort by Z to reduce overdraw?
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
-        {
-            ViewProjection vp{};
-            vp.view = view;
-            vp.projection = projection;
-            // TODO use persistently mapped buffers instead
-            void* data;
-            vkMapMemory(m_device, m_viewProjectionBufferMemory, 0, sizeof(vp), 0, &data);
-            memcpy(data, &vp, sizeof(vp));
-            vkUnmapMemory(m_device, m_viewProjectionBufferMemory);
-        }
-        {
-            LightBlock lightBlock{};
-            lightBlock.lightCount = std::min(8, (int)lights.size());
-            for (int i = 0; i < lightBlock.lightCount; ++i) {
-                lightBlock.lights[i] = lights[i];
-            }
-            void* data;
-            vkMapMemory(m_device, m_lightBlockBufferMemory, 0, sizeof(lightBlock), 0, &data);
-            memcpy(data, &lightBlock, sizeof(lightBlock));
-            vkUnmapMemory(m_device, m_lightBlockBufferMemory);
-        }
-        {
-            m_modelTransforms.reserve(objects.size());
-            m_modelTransforms.clear();
-            for (auto const& object : objects) {m_modelTransforms.push_back({object.getTransform()});}
-            void* data;
-            vkMapMemory(m_device, m_modelTransformBufferMemory, 0, m_modelTransforms.size() * sizeof(ModelTransform), 0, &data);
-            memcpy(data, m_modelTransforms.data(), m_modelTransforms.size() * sizeof(ModelTransform));
-            vkUnmapMemory(m_device, m_modelTransformBufferMemory);
+        *m_viewProjection = {view, projection};
+        m_lightBlock->lightCount = std::min(8, (int)lights.size());
+        std::copy_n(std::begin(lights), m_lightBlock->lightCount, std::begin(m_lightBlock->lights));
+        for (size_t i = 0; i < objects.size(); ++i) {
+            m_modelTransforms[i] = {objects[i].getTransform()};
         }
 
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 2, 1, &m_descriptorSetViewProjection, 0, nullptr);
@@ -181,7 +166,9 @@ public:
     }
 
     ~Pipeline() {
-
+        vkUnmapMemory(m_device, m_modelTransformBufferMemory);
+        vkUnmapMemory(m_device, m_lightBlockBufferMemory);
+        vkUnmapMemory(m_device, m_viewProjectionBufferMemory);
     }
 
 private:
@@ -208,14 +195,16 @@ private:
 
     VkDeviceMemory m_modelTransformBufferMemory;
     VkBuffer m_modelTransformBuffer;
-    std::vector<ModelTransform> m_modelTransforms;
+    std::span<ModelTransform> m_modelTransforms;
     std::vector<VkDescriptorSet> m_modelTransformDescriptorSets;
 
     VkDeviceMemory m_viewProjectionBufferMemory;
     VkBuffer m_viewProjectionBuffer;
+    ViewProjection* m_viewProjection;
 
     VkDeviceMemory m_lightBlockBufferMemory;
     VkBuffer m_lightBlockBuffer;
+    LightBlock* m_lightBlock;
 
     VkSampleCountFlagBits m_msaaSamples;
     VkExtent2D m_extent;
