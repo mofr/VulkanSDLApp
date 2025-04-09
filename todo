@@ -2,7 +2,16 @@ Rendering
 - Animate lights (position and color/intensity)
 - Implement normal mapping
 - Implement PBR
+- Background cubemap
+ - Load a cubemap texture and render it as a simple cube
+ - Create a specialized pipeline to render it as a skybox
+- Separate the following data per frame in flight
+ - ViewTransform buffer
+ - Light block
+ - Model transform descriptors
 - Shadow maps
+ - Requires separate render pass(es) so need to extract this part from RenderSurface
+ - Requires separate pipeline so need to extract non-pipeline code from Pipeline class
 
 Organizational
 - Reduce main function size

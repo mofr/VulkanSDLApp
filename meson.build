@@ -35,6 +35,7 @@ app = executable(
         [
                 'main.cpp',
                 'Pipeline.h',
+                'VulkanContext.h',
                 'VulkanFunctions.h',
                 'ImageFunctions.h',
                 'MeshFunctions.h',
@@ -48,6 +49,7 @@ app = executable(
                 'MeshObject.h',
                 'Swapchain.h',
                 'RenderSurface.h',
+                'RenderingConfig.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
                 '3rdparty/tinyexr.cc',
