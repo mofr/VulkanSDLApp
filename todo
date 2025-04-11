@@ -3,8 +3,8 @@ Rendering
 - Implement normal mapping
 - Implement PBR
 - Background cubemap
- - Load a cubemap texture and render it as a simple cube
- - Create a specialized pipeline to render it as a skybox
+ - Load cubemap from KTX
+ - panorama EXR -> into something loadable (ktx/6 exr files/etc)
 - Separate the following data per frame in flight
  - ViewTransform buffer
  - Light block

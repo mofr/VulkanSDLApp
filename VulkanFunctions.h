@@ -510,12 +510,14 @@ VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice physicalDevice) {
     return VK_SAMPLE_COUNT_1_BIT;
 }
 
-VkImage loadCubemap(
+void loadCubemap(
     VkPhysicalDevice physicalDevice,
     VkDevice device,
     VkCommandPool commandPool,
     VkQueue queue,
-    std::array<std::string, 6> filenames
+    std::array<std::string, 6> filenames,
+    VkImage* image,
+    VkImageView* imageView
 ) {
     std::array imageDatas = {
         loadImage(filenames[0]),
@@ -530,6 +532,7 @@ VkImage loadCubemap(
     uint32_t width = imageDatas[0].width;
     uint32_t height = imageDatas[0].height;
     std::array<VkDeviceSize, 6> offsets;
+    VkFormat imageFormat = imageDatas[0].imageFormat;
 
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
@@ -539,7 +542,7 @@ VkImage loadCubemap(
         device,
         width,
         height,
-        VK_FORMAT_R8G8B8A8_SRGB,
+        imageFormat,
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -597,7 +600,14 @@ VkImage loadCubemap(
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 
-    return textureImage;
+    *image = textureImage;
+    *imageView = createImageView(
+        device,
+        textureImage,
+        imageFormat,
+        1,
+        VK_IMAGE_VIEW_TYPE_CUBE
+    );
 }
 
 VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code) {

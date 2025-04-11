@@ -14,7 +14,7 @@ public:
         VkExtent2D extent,
         VkRenderPass renderPass,
         VkSampleCountFlagBits msaaSamples,
-        VkImageView backgroundImageView
+        VkImageView imageView
     ): m_device(device) {
         m_descriptorSetLayout = createDescriptorSetLayout(device);
         m_layout = createPipelineLayout(device, {m_descriptorSetLayout});
@@ -23,7 +23,7 @@ public:
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
         m_descriptorPool = createDescriptorPool(device);
         m_sampler = createTextureSampler(device, 0, 1);
-        m_descriptorSet = createDescriptorSet(backgroundImageView, m_sampler);
+        m_descriptorSet = createDescriptorSet(imageView, m_sampler);
     }
 
     void draw(

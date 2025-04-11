@@ -114,30 +114,24 @@ int main() {
         .msaaSamples = config.msaaSamples,
     });
 
-    VkImageView backgroundImageView;
-    {
-        VkImage cubemapImage = loadCubemap(
-            vulkanContext.physicalDevice,
-            vulkanContext.device,
-            vulkanContext.commandPool,
-            vulkanContext.graphicsQueue,
-            {
-                "resources/debug-cubemap/cubemap-face-x-positive.png",
-                "resources/debug-cubemap/cubemap-face-x-negative.png",
-                "resources/debug-cubemap/cubemap-face-y-positive.png",
-                "resources/debug-cubemap/cubemap-face-y-negative.png",
-                "resources/debug-cubemap/cubemap-face-z-positive.png",
-                "resources/debug-cubemap/cubemap-face-z-negative.png",
-            }
-        );
-        backgroundImageView = createImageView(
-            vulkanContext.device,
-            cubemapImage,
-            VK_FORMAT_R8G8B8A8_SRGB,
-            1,
-            VK_IMAGE_VIEW_TYPE_CUBE
-        );
-    }
+    VkImage environmentImage;
+    VkImageView environmentImageView;
+    loadCubemap(
+        vulkanContext.physicalDevice,
+        vulkanContext.device,
+        vulkanContext.commandPool,
+        vulkanContext.graphicsQueue,
+        {
+            "resources/rosendal_plains_1_8k/px.exr",
+            "resources/rosendal_plains_1_8k/nx.exr",
+            "resources/rosendal_plains_1_8k/py.exr",
+            "resources/rosendal_plains_1_8k/ny.exr",
+            "resources/rosendal_plains_1_8k/pz.exr",
+            "resources/rosendal_plains_1_8k/nz.exr",
+        },
+        &environmentImage,
+        &environmentImageView
+    );
 
     CubemapBackgroundPipeline backgroundPipeline(
         vulkanContext.physicalDevice,
@@ -145,7 +139,7 @@ int main() {
         renderSurface.getExtent(),
         renderSurface.getRenderPass(),
         renderSurface.getMsaaSamples(),
-        backgroundImageView
+        environmentImageView
     );
 
     Pipeline pipeline(
