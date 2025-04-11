@@ -16,6 +16,7 @@
 #include <imgui_impl_vulkan.h>
 
 #include "Pipeline.h"
+#include "CubemapBackgroundPipeline.h"
 #include "Vertex.h"
 #include "VulkanContext.h"
 #include "VulkanFunctions.h"
@@ -79,21 +80,6 @@ static void check_vk_result(VkResult err)
 }
 
 int main() {
-    uint32_t width = 1024;
-    uint32_t height = 768;
-
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
-        return -1;
-    }
-
-    SDL_Window* window = SDL_CreateWindow("Vulkan SDL App", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_VULKAN);
-    if (!window) {
-        std::cerr << "Failed to create window: " << SDL_GetError() << std::endl;
-        SDL_Quit();
-        return -1;
-    }
-
     VulkanContext vulkanContext;
     RenderingConfig config{
         .vsyncEnabled = true,
@@ -102,6 +88,18 @@ int main() {
     };
     RenderingConfig stagingConfig = config;
 
+    uint32_t width = 1024;
+    uint32_t height = 768;
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
+        return -1;
+    }
+    SDL_Window* window = SDL_CreateWindow("Vulkan SDL App", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_VULKAN);
+    if (!window) {
+        std::cerr << "Failed to create window: " << SDL_GetError() << std::endl;
+        SDL_Quit();
+        return -1;
+    }
     RenderSurface renderSurface({
         .instance = vulkanContext.instance,
         .physicalDevice = vulkanContext.physicalDevice,
@@ -115,6 +113,40 @@ int main() {
         .vsyncEnabled = config.vsyncEnabled,
         .msaaSamples = config.msaaSamples,
     });
+
+    VkImageView backgroundImageView;
+    {
+        VkImage cubemapImage = loadCubemap(
+            vulkanContext.physicalDevice,
+            vulkanContext.device,
+            vulkanContext.commandPool,
+            vulkanContext.graphicsQueue,
+            {
+                "resources/debug-cubemap/cubemap-face-x-positive.png",
+                "resources/debug-cubemap/cubemap-face-x-negative.png",
+                "resources/debug-cubemap/cubemap-face-y-positive.png",
+                "resources/debug-cubemap/cubemap-face-y-negative.png",
+                "resources/debug-cubemap/cubemap-face-z-positive.png",
+                "resources/debug-cubemap/cubemap-face-z-negative.png",
+            }
+        );
+        backgroundImageView = createImageView(
+            vulkanContext.device,
+            cubemapImage,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            1,
+            VK_IMAGE_VIEW_TYPE_CUBE
+        );
+    }
+
+    CubemapBackgroundPipeline backgroundPipeline(
+        vulkanContext.physicalDevice,
+        vulkanContext.device,
+        renderSurface.getExtent(),
+        renderSurface.getRenderPass(),
+        renderSurface.getMsaaSamples(),
+        backgroundImageView
+    );
 
     Pipeline pipeline(
         vulkanContext.physicalDevice,
@@ -245,6 +277,12 @@ int main() {
             cameraController->update(camera, dt);
 
         RenderSurface::Frame frame = renderSurface.beginFrame();
+
+        backgroundPipeline.draw(
+            frame.commandBuffer,
+            camera.getProjectionMatrix(),
+            camera.getViewMatrix()
+        );
 
         pipeline.draw(
             frame.commandBuffer,

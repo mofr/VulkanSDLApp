@@ -2,26 +2,52 @@ project('VulkanSDLApp', 'cpp', 'c',
         version : '1.0.0',
         default_options : ['cpp_std=c++20', 'warning_level=3', 'werror=true'])
 
-vertex_shader_src = 'shader.vertex.glsl'
-fragment_shader_src = 'shader.fragment.glsl'
+# Define your shaders with their types
+shader_list = [
+    'shader.vertex.glsl',
+    'shader.fragment.glsl',
+    'CubemapBackground.vertex.glsl',
+    'CubemapBackground.fragment.glsl',
+]
 
-vertex_shader = custom_target(
-        'vertex_shader',
-        input : vertex_shader_src,
-        output : 'shader.vertex.spv',
-        command : ['glslc', '-fshader-stage=vertex', '@INPUT@', '-o', '@OUTPUT@'],
+# Empty array to collect compiled shader targets
+compiled_shaders = []
+
+# Process each shader in the list
+# Mapping of filename patterns to shader stages
+shader_stages = {
+    '.vertex.glsl': 'vertex',
+    '.fragment.glsl': 'fragment',
+    '.compute.glsl': 'compute',
+    '.geometry.glsl': 'geometry',
+    '.tess_control.glsl': 'tesscontrol',
+    '.tess_eval.glsl': 'tesseval',
+}
+foreach shader_file : shader_list
+    # Determine shader type from filename
+    shader_stage = ''
+    foreach suffix, stage : shader_stages
+        if shader_file.endswith(suffix)
+            shader_stage = stage
+            break
+        endif
+    endforeach
+    
+    if shader_stage == ''
+        error('Could not determine shader stage for: ' + shader_file)
+    endif
+    output_file = shader_file.replace('.glsl', '.spv')
+    compiled_shader = custom_target(
+        shader_file,
+        input : shader_file,
+        output : output_file,
+        command : ['glslc', '-fshader-stage=' + shader_stage, '@INPUT@', '-o', '@OUTPUT@'],
         build_by_default : true,
-)
+    )
+    compiled_shaders += compiled_shader
+endforeach
 
-fragment_shader = custom_target(
-        'fragment_shader',
-        input : fragment_shader_src,
-        output : 'shader.fragment.spv',
-        command : ['glslc', '-fshader-stage=fragment', '@INPUT@', '-o', '@OUTPUT@'],
-        build_by_default : true,
-)
-
-shaders_dep = declare_dependency(sources: [vertex_shader, fragment_shader])
+shaders_dep = declare_dependency(sources: compiled_shaders)
 
 dependencies = [
         dependency('sdl2'),
@@ -35,6 +61,7 @@ app = executable(
         [
                 'main.cpp',
                 'Pipeline.h',
+                'CubemapBackgroundPipeline.h',
                 'VulkanContext.h',
                 'VulkanFunctions.h',
                 'ImageFunctions.h',
@@ -46,6 +73,7 @@ app = executable(
                 'CameraController.h',
                 'OrbitCameraController.h',
                 'FlyingCameraController.h',
+                'FileFunctions.h',
                 'MeshObject.h',
                 'Swapchain.h',
                 'RenderSurface.h',

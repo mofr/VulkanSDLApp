@@ -6,6 +6,7 @@
 
 #include "Vertex.h"
 #include "VulkanFunctions.h"
+#include "FileFunctions.h"
 #include "MeshObject.h"
 
 /**
@@ -413,45 +414,49 @@ private:
         fragShaderStageInfo.module = createShaderModule(device, loadFile("build/shader.fragment.spv"));
         fragShaderStageInfo.pName = "main"; // Entry point in the shader
 
-        VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+        std::array shaderStages = { vertShaderStageInfo, fragShaderStageInfo };
 
-        VkVertexInputBindingDescription bindingDescription{};
-        bindingDescription.binding = 0; // Binding index
-        bindingDescription.stride = sizeof(Vertex); // Size of each vertex
-        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // Per-vertex data
+        std::array bindingDescriptions = {
+                VkVertexInputBindingDescription{
+                .binding = 0,
+                .stride = sizeof(Vertex),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+            },
+        };
 
-        std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions = {};
-
-        // Position attribute
-        attributeDescriptions[0].binding = 0;
-        attributeDescriptions[0].location = 0; // Corresponds to inPosition in the vertex shader
-        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
-        attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-        // Normal attribute
-        attributeDescriptions[1].binding = 0;
-        attributeDescriptions[1].location = 1; // inNormal
-        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
-        attributeDescriptions[1].offset = offsetof(Vertex, normal);
-
-        // Color attribute
-        attributeDescriptions[2].binding = 0;
-        attributeDescriptions[2].location = 2; // Corresponds to inColor in the vertex shader
-        attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
-        attributeDescriptions[2].offset = offsetof(Vertex, color);
-
-        // UV attribute
-        attributeDescriptions[3].binding = 0;
-        attributeDescriptions[3].location = 3; // Corresponds to inUV in the vertex shader
-        attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT; // vec2
-        attributeDescriptions[3].offset = offsetof(Vertex, uv);
+        std::array attributeDescriptions = {
+            VkVertexInputAttributeDescription{
+                .binding = 0,
+                .location = 0,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(Vertex, pos),
+            },
+            VkVertexInputAttributeDescription{
+                .binding = 0,
+                .location = 1,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(Vertex, normal),
+            },
+            VkVertexInputAttributeDescription{
+                .binding = 0,
+                .location = 2,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(Vertex, color),
+            },
+            VkVertexInputAttributeDescription{
+                .binding = 0,
+                .location = 3,
+                .format = VK_FORMAT_R32G32_SFLOAT,
+                .offset = offsetof(Vertex, uv),
+            },
+        };
 
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 1; // Number of bindings
-        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription; // Pointer to the binding descriptions
-        vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions.size(); // Number of attributes
-        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data(); // Pointer to the attribute descriptions
+        vertexInputInfo.vertexBindingDescriptionCount = bindingDescriptions.size();
+        vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+        vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions.size();
+        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
         inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -518,8 +523,8 @@ private:
 
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pipelineInfo.stageCount = 2;
-        pipelineInfo.pStages = shaderStages;
+        pipelineInfo.stageCount = shaderStages.size();
+        pipelineInfo.pStages = shaderStages.data();
         pipelineInfo.pVertexInputState = &vertexInputInfo;
         pipelineInfo.pInputAssemblyState = &inputAssembly;
         pipelineInfo.pViewportState = &viewportState;
@@ -541,34 +546,5 @@ private:
         vkDestroyShaderModule(device, fragShaderStageInfo.module, nullptr);
 
         return graphicsPipeline;
-    }
-
-    static VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code) {
-        VkShaderModuleCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-        VkShaderModule shaderModule;
-        if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create shader module!");
-        }
-
-        return shaderModule;
-    }
-
-    static std::vector<char> loadFile(const std::string& filePath) {
-        std::ifstream file(filePath, std::ios::ate | std::ios::binary);
-        if (!file.is_open()) {
-            throw std::runtime_error("failed to open shader file!");
-        }
-
-        size_t fileSize = (size_t)file.tellg();
-        std::vector<char> buffer(fileSize);
-        file.seekg(0);
-        file.read(buffer.data(), fileSize);
-        file.close();
-
-        return buffer;
     }
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <numeric>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include "ImageFunctions.h"
@@ -113,16 +114,19 @@ void createImage(
     VkImage& image,
     VkDeviceMemory& imageMemory,
     VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT,
-    uint32_t mipLevels = 1
+    uint32_t mipLevels = 1,
+    uint32_t arrayLayers = 1,
+    VkImageCreateFlags flags = {}
 ) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.flags = flags;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
     imageInfo.extent.width = width;
     imageInfo.extent.height = height;
     imageInfo.extent.depth = 1;
     imageInfo.mipLevels = mipLevels;
-    imageInfo.arrayLayers = 1;
+    imageInfo.arrayLayers = arrayLayers;
     imageInfo.format = format;
     imageInfo.tiling = tiling;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -149,17 +153,23 @@ void createImage(
     vkBindImageMemory(device, image, imageMemory, 0);
 }
 
-VkImageView createImageView(VkDevice device, VkImage image, VkFormat format, uint32_t mipLevels = 1) {
+VkImageView createImageView(
+    VkDevice device,
+    VkImage image,
+    VkFormat format,
+    uint32_t mipLevels = 1,
+    VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D
+) {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.viewType = viewType;
     viewInfo.format = format;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = mipLevels;
     viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = 1;
+    viewInfo.subresourceRange.layerCount = viewType == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
 
     VkImageView imageView;
     if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
@@ -333,7 +343,7 @@ VkPipelineStageFlags getPipelineStageFlags(VkImageLayout layout)
 	}
 }
 
-void transitionImageLayout(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t baseMipLevel = 0, uint32_t mipLevels = 1) {
+void transitionImageLayout(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t baseMipLevel = 0, uint32_t mipLevels = 1, uint32_t layerCount = 1) {
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;
@@ -345,7 +355,7 @@ void transitionImageLayout(VkCommandBuffer commandBuffer, VkImage image, VkImage
     barrier.subresourceRange.baseMipLevel = baseMipLevel;
     barrier.subresourceRange.levelCount = mipLevels;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = layerCount;
 
     VkPipelineStageFlags sourceStage = getPipelineStageFlags(oldLayout);
     VkPipelineStageFlags destinationStage = getPipelineStageFlags(newLayout);
@@ -403,18 +413,8 @@ VkImage createTextureImage(
     ImageData const& imageData,
     uint32_t mipLevels = 1
 ) {
-    VkDeviceMemory stagingBufferMemory;
-    VkBuffer stagingBuffer = createBuffer(device, physicalDevice, imageData.dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &stagingBufferMemory);
-    {
-        void* data;
-        vkMapMemory(device, stagingBufferMemory, 0, imageData.dataSize, 0, &data);
-        memcpy(data, imageData.data.get(), imageData.dataSize);
-        vkUnmapMemory(device, stagingBufferMemory);
-    }
-
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
-
     createImage(
         physicalDevice,
         device,
@@ -429,6 +429,14 @@ VkImage createTextureImage(
         VK_SAMPLE_COUNT_1_BIT,
         mipLevels
     );
+    VkDeviceMemory stagingBufferMemory;
+    VkBuffer stagingBuffer = createBuffer(device, physicalDevice, imageData.dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &stagingBufferMemory);
+    {
+        void* data;
+        vkMapMemory(device, stagingBufferMemory, 0, imageData.dataSize, 0, &data);
+        memcpy(data, imageData.data.get(), imageData.dataSize);
+        vkUnmapMemory(device, stagingBufferMemory);
+    }
 
     VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
@@ -500,4 +508,108 @@ VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice physicalDevice) {
     if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
 
     return VK_SAMPLE_COUNT_1_BIT;
+}
+
+VkImage loadCubemap(
+    VkPhysicalDevice physicalDevice,
+    VkDevice device,
+    VkCommandPool commandPool,
+    VkQueue queue,
+    std::array<std::string, 6> filenames
+) {
+    std::array imageDatas = {
+        loadImage(filenames[0]),
+        loadImage(filenames[1]),
+        loadImage(filenames[2]),
+        loadImage(filenames[3]),
+        loadImage(filenames[4]),
+        loadImage(filenames[5]),
+    };
+    // TODO check that all images are of the same size
+    uint32_t dataSize = imageDatas[0].dataSize * 6;  // TODO sum instead
+    uint32_t width = imageDatas[0].width;
+    uint32_t height = imageDatas[0].height;
+    std::array<VkDeviceSize, 6> offsets;
+
+    VkImage textureImage;
+    VkDeviceMemory textureImageMemory;
+    uint32_t mipLevels = 1;
+    createImage(
+        physicalDevice,
+        device,
+        width,
+        height,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        textureImage,
+        textureImageMemory,
+        VK_SAMPLE_COUNT_1_BIT,
+        mipLevels,
+        6,
+        VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+    );
+
+    VkDeviceMemory stagingBufferMemory;
+    VkBuffer stagingBuffer = createBuffer(device, physicalDevice, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &stagingBufferMemory);
+    {
+        void* data;
+        intptr_t offset = 0;
+        vkMapMemory(device, stagingBufferMemory, 0, dataSize, 0, &data);
+        for (size_t i = 0; i < imageDatas.size(); ++i) {
+            auto const& imageData = imageDatas[i];
+            char* dst = (char*)data + offset;
+            memcpy(dst, imageData.data.get(), imageData.dataSize);
+            offsets[i] = offset;
+            offset += imageData.dataSize;
+        }
+        vkUnmapMemory(device, stagingBufferMemory);
+    }
+
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
+
+    transitionImageLayout(commandBuffer, textureImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, 1, 6);
+    std::array<VkBufferImageCopy, 6> regions;
+    for (size_t i = 0; i < regions.size(); ++i) {
+        regions[i] = VkBufferImageCopy{
+            .bufferOffset = offsets[i],
+            .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .imageSubresource.mipLevel = 0,
+            .imageSubresource.baseArrayLayer = static_cast<uint32_t>(i),
+            .imageSubresource.layerCount = 1,
+            .imageOffset = {0, 0, 0},
+            .imageExtent = {width, height, 1},
+        };
+    };
+    
+    vkCmdCopyBufferToImage(
+        commandBuffer,
+        stagingBuffer,
+        textureImage,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        regions.size(),
+        regions.data()
+    );
+    transitionImageLayout(commandBuffer, textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, mipLevels, 6);
+    endSingleTimeCommands(device, commandPool, queue, commandBuffer);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+
+    return textureImage;
+}
+
+VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code) {
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create shader module!");
+    }
+
+    return shaderModule;
 }
