@@ -1,10 +1,9 @@
-Rendering 
+Rendering
 - Animate lights (position and color/intensity)
 - Implement normal mapping
 - Implement PBR
-- Background cubemap
+- Environment cubemap
  - Load cubemap from KTX
- - panorama EXR -> into something loadable (ktx/6 exr files/etc)
 - Separate the following data per frame in flight
  - ViewTransform buffer
  - Light block
