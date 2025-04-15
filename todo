@@ -4,6 +4,7 @@ Rendering
 - Implement PBR
 - Environment cubemap
  - Load cubemap from KTX
+ - IBL: use environment texture to handle diffuse and reflections
 - Separate the following data per frame in flight
  - ViewTransform buffer
  - Light block
@@ -25,4 +26,4 @@ Organizational
 Other
 - gltf
 - Build to web
-- Separate presentation (swapchain) and rendering. Do not render directly to swapchain images.
+- Separate presentation (swapchain) and rendering. Do not render directly to swapchain images. It's required to render in HDR.

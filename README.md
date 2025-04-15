@@ -4,6 +4,8 @@ Setup build dir: `meson setup build` (`meson setup build --reconfigure` to recon
 
 Build: `meson compile -C build`
 
+Process assets: `./build/ProcessAssets`
+
 Run: `./build/VulkanSDLApp`
 
 Coordinate systems
@@ -123,6 +125,4 @@ In gltf texture coordinates assume the top-left corner as the origin.
 Environment cubemaps
 ====================
 
-To convert equirectangular panoramas I use cmgen from filament:
-
-`cmgen -x output_dir --format=exr --size=1024 panorama.exr`
+Equirectangular panoramas are converted to cubemaps at compile time (ProcessAssets.cpp).

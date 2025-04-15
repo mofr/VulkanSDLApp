@@ -56,10 +56,36 @@ dependencies = [
         shaders_dep,
 ]
 
+ProcessEnvmap  = executable(
+        'ProcessEnvmap',
+        [
+                'ProcessEnvmap.cpp',
+                'CubemapFunctions.h',
+                '3rdparty/CLI11.hpp',
+                '3rdparty/tinyexr.h',
+                '3rdparty/tinyexr.cc',
+                '3rdparty/miniz.c',
+                ],
+        include_directories: ['3rdparty'],
+)
+
+ProcessAssets  = executable(
+        'ProcessAssets',
+        [
+                'ProcessAssets.cpp',
+                'CubemapFunctions.h',
+                '3rdparty/CLI11.hpp',
+                '3rdparty/tinyexr.h',
+                '3rdparty/tinyexr.cc',
+                '3rdparty/miniz.c',
+                ],
+        include_directories: ['3rdparty'],
+)
+
 app = executable(
         'VulkanSDLApp',
         [
-                'main.cpp',
+                'VulkanSDLApp.cpp',
                 'Pipeline.h',
                 'CubemapBackgroundPipeline.h',
                 'VulkanContext.h',
@@ -80,6 +106,7 @@ app = executable(
                 'RenderingConfig.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
+                '3rdparty/tinyexr.h',
                 '3rdparty/tinyexr.cc',
                 '3rdparty/miniz.c',
                 '3rdparty/imgui.h',
@@ -102,5 +129,3 @@ app = executable(
         dependencies: dependencies,
         include_directories: ['3rdparty'],
 )
-
-test('test', app)
