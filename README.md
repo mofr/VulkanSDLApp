@@ -93,7 +93,7 @@ Since I don't want to follow the "hidden" rule of the handedness swap, I use my 
 
 Front face
 ----------
-During rasterization vulkan needs to know if we are looking at the front face of at the back face.
+During rasterization vulkan needs to know if we are looking at the front face or at the back face.
 
 Vertex winding order in the framebuffer space is used to decide the face orientation.
 
