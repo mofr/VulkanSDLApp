@@ -12,6 +12,7 @@ Rendering
 - Shadow maps
  - Requires separate render pass(es) so need to extract this part from RenderSurface
  - Requires separate pipeline so need to extract non-pipeline code from Pipeline class
+- Particle systems (cpu/gpu compute)
 
 Organizational
 - Reduce main function size
@@ -26,4 +27,4 @@ Organizational
 Other
 - gltf
 - Build to web
-- Separate presentation (swapchain) and rendering. Do not render directly to swapchain images. It's required to render in HDR.
+- Separate presentation (swapchain) and rendering. Do not render directly to swapchain images. It's required to render in HDR when display support only LDR.

@@ -22,6 +22,7 @@ Descriptor set layouts:
  Set 2:
   Binding 0: UBO with View and Projection matrices
   Binding 1: UBO lights
+  Binding 2: envmap + sampler
 */
 class Pipeline {
 public:

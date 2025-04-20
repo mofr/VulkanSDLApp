@@ -22,6 +22,7 @@ public:
             VK_EXT_METAL_SURFACE_EXTENSION_NAME,
             VK_KHR_SURFACE_EXTENSION_NAME,
             "VK_KHR_get_physical_device_properties2",
+            "VK_EXT_swapchain_colorspace",
             // VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
             // "VK_KHR_get_surface_capabilities2",
         };

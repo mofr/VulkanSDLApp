@@ -165,7 +165,7 @@ int main() {
         Model lightModel1;
         lightModel1.vertices = createSphereMesh(2, 0.05);
         lightModel1.material.diffuseFactor = glm::vec3{0.0f};
-        lightModel1.material.emitFactor = glm::vec3{1.0f, 0.5f, 0.5f};
+        lightModel1.material.emitFactor = 5.0f * glm::vec3{1.0f, 0.5f, 0.5f};
         MeshObject lightObj1 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel1);
         lightObj1.position = {-1.5f, 1.0f, 1.0f};
         meshObjects.push_back(lightObj1);
@@ -176,7 +176,7 @@ int main() {
         Model lightModel2;
         lightModel2.vertices = createSphereMesh(2, 0.05);
         lightModel2.material.diffuseFactor = glm::vec3{0.0f};
-        lightModel2.material.emitFactor = glm::vec3{0.5f, 0.5f, 1.0f};
+        lightModel2.material.emitFactor = 5.0f * glm::vec3{0.5f, 0.5f, 1.0f};
         MeshObject lightObj2 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel2);
         lightObj2.position = {1.5f, 1.0f, 1.0f};
         meshObjects.push_back(lightObj2);
@@ -293,7 +293,6 @@ int main() {
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();
         ImGui_ImplVulkan_RenderDrawData(imguiDrawData, frame.commandBuffer);
-        // std::cout << "draw imgui done" << std::endl;
 
         renderSurface.endFrame(frame);
 

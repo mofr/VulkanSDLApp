@@ -2,10 +2,20 @@
 
 #include <vulkan/vulkan.h>
 #include <iostream>
+#include <set>
 
 class Swapchain {
 public:
-    Swapchain(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface, VkExtent2D extent, uint32_t imageCount, bool vsyncEnabled, std::unique_ptr<Swapchain> oldSwapchain = nullptr): 
+    Swapchain(
+        VkPhysicalDevice physicalDevice, 
+        VkDevice device, 
+        VkSurfaceKHR surface, 
+        VkExtent2D extent, 
+        uint32_t imageCount, 
+        bool vsyncEnabled, 
+        std::vector<VkSurfaceFormatKHR> preferredFormats, 
+        std::unique_ptr<Swapchain> oldSwapchain = nullptr
+    ): 
         m_device(device), 
         m_extent(extent),
         m_imageCount(imageCount), 
@@ -13,54 +23,24 @@ public:
         m_imageAvailableSemaphores(imageCount),
         m_oldSwapchain(std::move(oldSwapchain))
     {
-        // Get supported presentation modes
-        // uint32_t presentModeCount;
-        // vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
-        // std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-        // vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
-
-        VkSurfaceCapabilitiesKHR surfaceCapabilities;
         {
-            VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
-            if (result != VK_SUCCESS) {
+            VkSurfaceCapabilitiesKHR surfaceCapabilities;
+            if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to get surface capabilities!");
             }
-        }
-        if (imageCount > surfaceCapabilities.maxImageCount || imageCount < surfaceCapabilities.minImageCount) {
-            throw std::runtime_error("Unsopported swagchain image count!");
+            if (imageCount > surfaceCapabilities.maxImageCount || imageCount < surfaceCapabilities.minImageCount) {
+                throw std::runtime_error("Unsupported swagchain image count!");
+            }
         }
 
-        uint32_t formatCount;
-        {
-            VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
-            if (result != VK_SUCCESS) {
-                throw std::runtime_error("Failed to get surface formats!");
-            }
-        }
-        std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, surfaceFormats.data());
-        VkSurfaceFormatKHR selectedFormat;
-        {
-            bool found = false;
-            for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats) {
-                if (surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-                    m_format = surfaceFormat.format;
-                    selectedFormat = surfaceFormat;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                throw std::runtime_error("sRGB is not supported");
-            }
-        }
-        
+        m_surfaceFormat = chooseSurfaceFormat(physicalDevice, surface, preferredFormats);
+
         VkSwapchainCreateInfoKHR swapchainInfo{};
         swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         swapchainInfo.surface = surface;
         swapchainInfo.minImageCount = imageCount;
-        swapchainInfo.imageFormat = selectedFormat.format;
-        swapchainInfo.imageColorSpace = selectedFormat.colorSpace;
+        swapchainInfo.imageFormat = m_surfaceFormat.format;
+        swapchainInfo.imageColorSpace = m_surfaceFormat.colorSpace;
         swapchainInfo.imageExtent = extent;
         swapchainInfo.imageArrayLayers = 1;
         swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -84,7 +64,7 @@ public:
             viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             viewInfo.image = m_images[i];
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewInfo.format = selectedFormat.format;
+            viewInfo.format = m_surfaceFormat.format;
             viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
             viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
             viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -137,8 +117,8 @@ public:
         return m_extent;
     }
 
-    VkFormat getFormat() const {
-        return m_format;
+    VkSurfaceFormatKHR getFormat() const {
+        return m_surfaceFormat;
     }
 
     uint32_t getImageCount() const {
@@ -150,13 +130,38 @@ public:
     }
 
 private:
+    static VkSurfaceFormatKHR chooseSurfaceFormat(
+        VkPhysicalDevice physicalDevice,
+        VkSurfaceKHR surface,
+        std::vector<VkSurfaceFormatKHR> preferredFormats
+    ) {
+        uint32_t formatCount;
+        if (vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to get surface format count!");
+        }
+        std::vector<VkSurfaceFormatKHR> supportedFormats(formatCount);
+        if (vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, supportedFormats.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to get surface formats!");
+        }
+        std::set<std::tuple<VkFormat, VkColorSpaceKHR>> supportedFormatsSet;
+        for (const auto& supportedFormat : supportedFormats) {
+            supportedFormatsSet.insert({supportedFormat.format, supportedFormat.colorSpace});
+        }
+        for (const VkSurfaceFormatKHR& preferredFormat : preferredFormats) {
+            if (supportedFormatsSet.contains({preferredFormat.format, preferredFormat.colorSpace})) {
+                return preferredFormat;
+            }
+        }
+        throw std::runtime_error("No suitable surface format available");
+    }
+
     VkDevice m_device;
     VkSwapchainKHR m_swapchain;
     VkExtent2D m_extent;
     uint32_t m_imageCount;
     std::vector<VkImage> m_images;
     std::vector<VkImageView> m_imageViews;
-    VkFormat m_format;
+    VkSurfaceFormatKHR m_surfaceFormat;
     std::vector<VkSemaphore> m_imageAvailableSemaphores;
     uint32_t m_currentFrame = 0;
     std::unique_ptr<Swapchain> m_oldSwapchain;
