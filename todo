@@ -1,5 +1,7 @@
 Rendering
+- Add environment switcher
 - Animate lights (position and color/intensity)
+- Add sun light / point light distinction
 - Implement normal mapping
 - Implement PBR
 - Environment cubemap
@@ -28,3 +30,4 @@ Other
 - gltf
 - Build to web
 - Separate presentation (swapchain) and rendering. Do not render directly to swapchain images. It's required to render in HDR when display support only LDR.
+- Sort by Z to reduce overdraw

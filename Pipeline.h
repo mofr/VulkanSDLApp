@@ -14,12 +14,12 @@ The class represents a concrete Vulkan pipeline to render textured meshes.
 It requires a render pass with two attachments: color, depth.
 It requires specific vertex format: Vertex.
 Descriptor set layouts:
- Set 0:
+ Set 0: per-object data
   Binding 0: UBO with Model matrix
- Set 1:
+ Set 1: material data
   Binding 0: diffuse texture + sampler
   Binding 1: UBO material props
- Set 2:
+ Set 2: frame-level
   Binding 0: UBO with View and Projection matrices
   Binding 1: UBO lights
   Binding 2: envmap + sampler
@@ -32,7 +32,9 @@ public:
         VkExtent2D extent, 
         VkRenderPass renderPass, 
         VkSampleCountFlagBits msaaSamples,
-        uint32_t poolSize
+        uint32_t poolSize,
+        VkImageView environmentImageView,
+        VkSampler environmentSampler
     ):
         m_msaaSamples(msaaSamples),
         m_extent(extent),
@@ -42,8 +44,8 @@ public:
         m_device = device;
         m_descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
         m_descriptorSetLayoutMaterial = createDescriptorSetLayoutMaterial(device);
-        m_descriptorSetLayoutViewProjection = createDescriptorSetLayoutViewProjection(device);
-        m_layout = createPipelineLayout(device, {m_descriptorSetLayoutModelTransform, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutViewProjection});
+        m_descriptorSetLayoutFrameLevel = createDescriptorSetLayoutFrameLevel(device);
+        m_layout = createPipelineLayout(device, {m_descriptorSetLayoutModelTransform, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutFrameLevel});
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
 
         createUniformBuffer(physicalDevice, device, m_viewProjectionBuffer, m_viewProjectionBufferMemory, sizeof(ViewProjection));
@@ -58,7 +60,7 @@ public:
         }
 
         m_descriptorPool = createDescriptorPool(device, poolSize);
-        m_descriptorSetViewProjection = createDescriptorSetViewProjection();
+        m_descriptorSetFrameLevel = createDescriptorSetFrameLevel(environmentImageView, environmentSampler);
         m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
 
@@ -98,8 +100,6 @@ public:
         std::vector<MeshObject> const& objects,
         std::vector<Light> const& lights
     ) {
-        // TODO sort by Z to reduce overdraw?
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
         *m_viewProjection = {view, projection};
         m_lightBlock->lightCount = std::min(8, (int)lights.size());
         std::copy_n(std::begin(lights), m_lightBlock->lightCount, std::begin(m_lightBlock->lights));
@@ -107,9 +107,10 @@ public:
             m_modelTransforms[i] = {objects[i].getTransform()};
         }
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 2, 1, &m_descriptorSetViewProjection, 0, nullptr);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 2, 1, &m_descriptorSetFrameLevel, 0, nullptr);
 
         // TODO group by vertex buffer and material
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
         for (uint32_t i = 0; i < objects.size(); i++) {
             auto const& object = objects[i];
             VkDescriptorSet transformDescriptorSet = m_modelTransformDescriptorSets[i];
@@ -134,10 +135,11 @@ public:
         }
         VkDescriptorSet materialDescriptorSet = createMaterialDescriptorSet();
         {
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = textureImageView;
-            imageInfo.sampler = textureSampler;
+            VkDescriptorImageInfo imageInfo {
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = textureImageView,
+                .sampler = textureSampler,
+            };
             VkDescriptorBufferInfo materialPropsBufferInfo{
                 .buffer=materialPropsBuffer,
                 .range=sizeof(MaterialProps),
@@ -192,8 +194,8 @@ private:
     VkDescriptorPool m_descriptorPool;
     VkDescriptorSetLayout m_descriptorSetLayoutModelTransform;
     VkDescriptorSetLayout m_descriptorSetLayoutMaterial;
-    VkDescriptorSetLayout m_descriptorSetLayoutViewProjection;
-    VkDescriptorSet m_descriptorSetViewProjection;
+    VkDescriptorSetLayout m_descriptorSetLayoutFrameLevel;
+    VkDescriptorSet m_descriptorSetFrameLevel;
 
     VkDeviceMemory m_modelTransformBufferMemory;
     VkBuffer m_modelTransformBuffer;
@@ -260,24 +262,29 @@ private:
         return descriptorSets;
     }
 
-    VkDescriptorSet createDescriptorSetViewProjection() {
+    VkDescriptorSet createDescriptorSetFrameLevel(VkImageView environmentImageView, VkSampler environmentSampler) {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = m_descriptorPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &m_descriptorSetLayoutViewProjection;
+        allocInfo.pSetLayouts = &m_descriptorSetLayoutFrameLevel;
         VkDescriptorSet descriptorSet;
         vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
         {
-            VkDescriptorBufferInfo viewProjectionBufferInfo{
+            VkDescriptorBufferInfo viewProjectionBufferInfo {
                 .buffer = m_viewProjectionBuffer,
                 .offset = 0,
                 .range = sizeof(ViewProjection)
             };
-            VkDescriptorBufferInfo lightBlockBufferInfo{
+            VkDescriptorBufferInfo lightBlockBufferInfo {
                 .buffer = m_lightBlockBuffer,
                 .offset = 0,
                 .range = sizeof(LightBlock)
+            };
+            VkDescriptorImageInfo envInfo {
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = environmentImageView,
+                .sampler = environmentSampler,
             };
             std::array writes = {
                 VkWriteDescriptorSet{
@@ -297,6 +304,15 @@ private:
                     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     .descriptorCount = 1,
                     .pBufferInfo = &lightBlockBufferInfo,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSet,
+                    .dstBinding = 2,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .pImageInfo = &envInfo,
                 },
             };
             vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
@@ -347,20 +363,26 @@ private:
         return descriptorSetLayout;
     }
 
-    static VkDescriptorSetLayout createDescriptorSetLayoutViewProjection(VkDevice device) {
+    static VkDescriptorSetLayout createDescriptorSetLayoutFrameLevel(VkDevice device) {
         std::array bindings = {
-            VkDescriptorSetLayoutBinding{
+            VkDescriptorSetLayoutBinding {
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             },
-            VkDescriptorSetLayoutBinding{
+            VkDescriptorSetLayoutBinding {
                 .binding = 1,
                 .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            }
+            },
+            VkDescriptorSetLayoutBinding {
+                .binding = 2,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
         VkDescriptorSetLayoutCreateInfo layoutInfo{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,

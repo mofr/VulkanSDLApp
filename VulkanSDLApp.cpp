@@ -142,13 +142,16 @@ int main() {
         environmentImageView
     );
 
+    VkSampler environmentSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, 0);
     Pipeline pipeline(
         vulkanContext.physicalDevice,
         vulkanContext.device,
         renderSurface.getExtent(),
         renderSurface.getRenderPass(),
         renderSurface.getMsaaSamples(),
-        1024
+        1024,
+        environmentImageView,
+        environmentSampler
     );
     std::vector<MeshObject> meshObjects;
     std::vector<Pipeline::Light> lights;

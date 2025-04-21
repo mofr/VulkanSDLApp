@@ -30,10 +30,12 @@ layout(set = 2, binding = 1) uniform LightBlock {
     int lightCount;
 };
 
+layout(set = 2, binding = 2) uniform samplerCube env;
+
 void main() {
-    vec3 ambient = vec3(0.04, 0.04, 0.07);
-    vec3 diffuseColor = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
     vec3 N = normalize(fragNormal);
+    vec3 ambient = vec3(texture(env, N));
+    vec3 diffuseColor = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
     vec3 viewDir = normalize(cameraPos - fragPosition);
 
     vec3 lightDiffuse = vec3(0);
