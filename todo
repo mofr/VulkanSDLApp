@@ -20,11 +20,6 @@ Organizational
 - Reduce main function size
 - Use vk-bootstrap
 - vulkan.h vs vulkan.hpp
-- Type safe uniform buffer creation and mapping:
-  - UniformBuffer<Thing> thingBuffer;
-  - thingBuffer.data = Thing{};  // data is Thing&
-  - UniformBufferArray<Thing> thingBuffer(3);
-  - thingsBuffer.data[0] = Thing{};  // data is std::span<Thing>
 
 Other
 - gltf

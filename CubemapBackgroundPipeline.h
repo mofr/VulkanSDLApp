@@ -15,11 +15,9 @@ public:
         VkRenderPass renderPass,
         VkSampleCountFlagBits msaaSamples,
         VkImageView imageView
-    ): m_device(device) {
+    ): m_device(device), m_viewProjection(physicalDevice, device) {
         m_descriptorSetLayout = createDescriptorSetLayout(device);
         m_layout = createPipelineLayout(device, {m_descriptorSetLayout});
-        createUniformBuffer(physicalDevice, device, m_viewProjectionBuffer, m_viewProjectionBufferMemory, sizeof(ViewProjection));
-        vkMapMemory(device, m_viewProjectionBufferMemory, 0, sizeof(m_viewProjection), 0, (void**)&m_viewProjection);
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
         m_descriptorPool = createDescriptorPool(device);
         m_sampler = createTextureSampler(device, 0, 1);
@@ -31,7 +29,7 @@ public:
         glm::mat4 const& projection,
         glm::mat4 const& view
     ) {
-        *m_viewProjection = {view, projection};
+        m_viewProjection.data() = {view, projection};
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
         std::array descriptorSets = {m_descriptorSet};
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
@@ -51,9 +49,7 @@ private:
     VkDescriptorSetLayout m_descriptorSetLayout;
     VkDescriptorSet m_descriptorSet;
 
-    VkDeviceMemory m_viewProjectionBufferMemory;
-    VkBuffer m_viewProjectionBuffer;
-    ViewProjection* m_viewProjection;
+    UniformBuffer<ViewProjection> m_viewProjection;
 
     VkSampler m_sampler;
 
@@ -237,12 +233,8 @@ private:
         allocInfo.pSetLayouts = &m_descriptorSetLayout;
         VkDescriptorSet descriptorSet;
         vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
-        
-        VkDescriptorBufferInfo viewProjectionBufferInfo{
-            .buffer = m_viewProjectionBuffer,
-            .offset = 0,
-            .range = sizeof(ViewProjection)
-        };
+
+        VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo();
         VkDescriptorImageInfo imageInfo {
             .sampler = sampler,
             .imageView = imageView,

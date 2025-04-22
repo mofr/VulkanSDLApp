@@ -8,6 +8,7 @@
 #include "VulkanFunctions.h"
 #include "FileFunctions.h"
 #include "MeshObject.h"
+#include "UniformBuffer.h"
 
 /**
 The class represents a concrete Vulkan pipeline to render textured meshes.
@@ -36,6 +37,9 @@ public:
         VkImageView environmentImageView,
         VkSampler environmentSampler
     ):
+        m_viewProjection(physicalDevice, device),
+        m_lightBlock(physicalDevice, device),
+        m_modelTransforms(physicalDevice, device, poolSize),
         m_msaaSamples(msaaSamples),
         m_extent(extent),
         m_renderPass(renderPass)
@@ -47,18 +51,6 @@ public:
         m_descriptorSetLayoutFrameLevel = createDescriptorSetLayoutFrameLevel(device);
         m_layout = createPipelineLayout(device, {m_descriptorSetLayoutModelTransform, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutFrameLevel});
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
-
-        createUniformBuffer(physicalDevice, device, m_viewProjectionBuffer, m_viewProjectionBufferMemory, sizeof(ViewProjection));
-        createUniformBuffer(physicalDevice, device, m_lightBlockBuffer, m_lightBlockBufferMemory, sizeof(LightBlock));
-        createUniformBuffer(physicalDevice, device, m_modelTransformBuffer, m_modelTransformBufferMemory, poolSize * sizeof(ModelTransform));
-        {
-            vkMapMemory(m_device, m_viewProjectionBufferMemory, 0, sizeof(m_viewProjection), 0, (void**)&m_viewProjection);
-            vkMapMemory(m_device, m_lightBlockBufferMemory, 0, sizeof(m_lightBlock), 0, (void**)&m_lightBlock);
-            ModelTransform* modelTransforms;
-            vkMapMemory(m_device, m_modelTransformBufferMemory, 0, sizeof(ModelTransform) * poolSize, 0, (void**)&modelTransforms);
-            m_modelTransforms = {modelTransforms, poolSize};
-        }
-
         m_descriptorPool = createDescriptorPool(device, poolSize);
         m_descriptorSetFrameLevel = createDescriptorSetFrameLevel(environmentImageView, environmentSampler);
         m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
@@ -100,11 +92,11 @@ public:
         std::vector<MeshObject> const& objects,
         std::vector<Light> const& lights
     ) {
-        *m_viewProjection = {view, projection};
-        m_lightBlock->lightCount = std::min(8, (int)lights.size());
-        std::copy_n(std::begin(lights), m_lightBlock->lightCount, std::begin(m_lightBlock->lights));
+        m_viewProjection.data() = {view, projection};
+        m_lightBlock.data().lightCount = std::min(8, (int)lights.size());
+        std::copy_n(std::begin(lights), m_lightBlock.data().lightCount, std::begin(m_lightBlock.data().lights));
         for (size_t i = 0; i < objects.size(); ++i) {
-            m_modelTransforms[i] = {objects[i].getTransform()};
+            m_modelTransforms.data()[i] = {objects[i].getTransform()};
         }
 
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 2, 1, &m_descriptorSetFrameLevel, 0, nullptr);
@@ -124,15 +116,9 @@ public:
     }
 
     VkDescriptorSet createMaterial(VkImageView textureImageView, VkSampler textureSampler, MaterialProps const& props) {
-        VkDeviceMemory materialPropsBufferMemory;
-        VkBuffer materialPropsBuffer;
-        createUniformBuffer(m_physicalDevice, m_device, materialPropsBuffer, materialPropsBufferMemory, sizeof(MaterialProps));
-        {
-            void* data;
-            vkMapMemory(m_device, materialPropsBufferMemory, 0, sizeof(props), 0, &data);
-            memcpy(data, &props, sizeof(props));
-            vkUnmapMemory(m_device, materialPropsBufferMemory);
-        }
+        // TODO need a proper Material object to handle the lifetime
+        auto propsBuffer = new UniformBuffer<MaterialProps>(m_physicalDevice, m_device);
+        propsBuffer->data() = props;
         VkDescriptorSet materialDescriptorSet = createMaterialDescriptorSet();
         {
             VkDescriptorImageInfo imageInfo {
@@ -140,10 +126,7 @@ public:
                 .imageView = textureImageView,
                 .sampler = textureSampler,
             };
-            VkDescriptorBufferInfo materialPropsBufferInfo{
-                .buffer=materialPropsBuffer,
-                .range=sizeof(MaterialProps),
-            };
+            VkDescriptorBufferInfo materialPropsBufferInfo = propsBuffer->descriptorBufferInfo();
             std::array writes = {
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -170,9 +153,6 @@ public:
     }
 
     ~Pipeline() {
-        vkUnmapMemory(m_device, m_modelTransformBufferMemory);
-        vkUnmapMemory(m_device, m_lightBlockBufferMemory);
-        vkUnmapMemory(m_device, m_viewProjectionBufferMemory);
     }
 
 private:
@@ -184,35 +164,6 @@ private:
         glm::mat4 view;
         glm::mat4 projection;
     };
-
-    VkPhysicalDevice m_physicalDevice;
-    VkDevice m_device;
-
-    VkPipelineLayout m_layout;
-    VkPipeline m_pipeline;
-
-    VkDescriptorPool m_descriptorPool;
-    VkDescriptorSetLayout m_descriptorSetLayoutModelTransform;
-    VkDescriptorSetLayout m_descriptorSetLayoutMaterial;
-    VkDescriptorSetLayout m_descriptorSetLayoutFrameLevel;
-    VkDescriptorSet m_descriptorSetFrameLevel;
-
-    VkDeviceMemory m_modelTransformBufferMemory;
-    VkBuffer m_modelTransformBuffer;
-    std::span<ModelTransform> m_modelTransforms;
-    std::vector<VkDescriptorSet> m_modelTransformDescriptorSets;
-
-    VkDeviceMemory m_viewProjectionBufferMemory;
-    VkBuffer m_viewProjectionBuffer;
-    ViewProjection* m_viewProjection;
-
-    VkDeviceMemory m_lightBlockBufferMemory;
-    VkBuffer m_lightBlockBuffer;
-    LightBlock* m_lightBlock;
-
-    VkSampleCountFlagBits m_msaaSamples;
-    VkExtent2D m_extent;
-    VkRenderPass m_renderPass;
 
     VkDescriptorSet createMaterialDescriptorSet() const {
         VkDescriptorSetAllocateInfo allocInfo{};
@@ -235,30 +186,21 @@ private:
         std::vector<VkDescriptorSet> descriptorSets(count);
         vkAllocateDescriptorSets(m_device, &allocInfo, descriptorSets.data());
 
-        {
-            std::vector<VkWriteDescriptorSet> writes;
-            std::vector<VkDescriptorBufferInfo> bufferInfos;
-            writes.reserve(count);
-            bufferInfos.reserve(count);
-            for (uint32_t i = 0; i < count; i++) {
-                VkDescriptorBufferInfo bufferInfo{};
-                bufferInfo.buffer = m_modelTransformBuffer;
-                bufferInfo.offset = i * sizeof(ModelTransform);
-                bufferInfo.range = sizeof(ModelTransform);
-
-                bufferInfos.push_back(bufferInfo);
-                writes.push_back(VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = descriptorSets[i],
-                    .dstBinding = 0,
-                    .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .pBufferInfo = bufferInfos.data() + i,
-                });
+        std::vector<VkWriteDescriptorSet> writes(count);
+        std::vector<VkDescriptorBufferInfo> bufferInfos(count);
+        for (uint32_t i = 0; i < count; i++) {
+            bufferInfos[i] = m_modelTransforms.descriptorBufferInfo(i);
+            writes[i] = VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = bufferInfos.data() + i,
             };
-            vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
-        }
+        };
+        vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         return descriptorSets;
     }
 
@@ -271,16 +213,8 @@ private:
         VkDescriptorSet descriptorSet;
         vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
         {
-            VkDescriptorBufferInfo viewProjectionBufferInfo {
-                .buffer = m_viewProjectionBuffer,
-                .offset = 0,
-                .range = sizeof(ViewProjection)
-            };
-            VkDescriptorBufferInfo lightBlockBufferInfo {
-                .buffer = m_lightBlockBuffer,
-                .offset = 0,
-                .range = sizeof(LightBlock)
-            };
+            VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo();
+            VkDescriptorBufferInfo lightBlockBufferInfo = m_lightBlock.descriptorBufferInfo();
             VkDescriptorImageInfo envInfo {
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 .imageView = environmentImageView,
@@ -570,4 +504,25 @@ private:
 
         return graphicsPipeline;
     }
+
+    VkPhysicalDevice m_physicalDevice;
+    VkDevice m_device;
+
+    VkPipelineLayout m_layout;
+    VkPipeline m_pipeline;
+
+    VkDescriptorPool m_descriptorPool;
+    VkDescriptorSetLayout m_descriptorSetLayoutModelTransform;
+    VkDescriptorSetLayout m_descriptorSetLayoutMaterial;
+    VkDescriptorSetLayout m_descriptorSetLayoutFrameLevel;
+    VkDescriptorSet m_descriptorSetFrameLevel;
+    std::vector<VkDescriptorSet> m_modelTransformDescriptorSets;
+
+    UniformBuffer<ViewProjection> m_viewProjection;
+    UniformBuffer<LightBlock> m_lightBlock;
+    UniformBuffer<ModelTransform[]> m_modelTransforms;
+
+    VkSampleCountFlagBits m_msaaSamples;
+    VkExtent2D m_extent;
+    VkRenderPass m_renderPass;
 };
