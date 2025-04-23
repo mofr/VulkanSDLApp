@@ -15,15 +15,15 @@ The class represents a concrete Vulkan pipeline to render textured meshes.
 It requires a render pass with two attachments: color, depth.
 It requires specific vertex format: Vertex.
 Descriptor set layouts:
- Set 0: per-object data
-  Binding 0: UBO with Model matrix
- Set 1: material data
-  Binding 0: diffuse texture + sampler
-  Binding 1: UBO material props
- Set 2: frame-level
+ Set 0: frame-level
   Binding 0: UBO with View and Projection matrices
   Binding 1: UBO lights
   Binding 2: envmap + sampler
+ Set 1: material data
+  Binding 0: diffuse texture + sampler
+  Binding 1: UBO material props
+ Set 2: per-object data
+  Binding 0: UBO with Model matrix
 */
 class Pipeline {
 public:
@@ -46,10 +46,10 @@ public:
     {
         m_physicalDevice = physicalDevice;
         m_device = device;
-        m_descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
-        m_descriptorSetLayoutMaterial = createDescriptorSetLayoutMaterial(device);
         m_descriptorSetLayoutFrameLevel = createDescriptorSetLayoutFrameLevel(device);
-        m_layout = createPipelineLayout(device, {m_descriptorSetLayoutModelTransform, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutFrameLevel});
+        m_descriptorSetLayoutMaterial = createDescriptorSetLayoutMaterial(device);
+        m_descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
+        m_layout = createPipelineLayout(device, {m_descriptorSetLayoutFrameLevel, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutModelTransform});
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
         m_descriptorPool = createDescriptorPool(device, poolSize);
         m_descriptorSetFrameLevel = createDescriptorSetFrameLevel(environmentImageView, environmentSampler);
@@ -99,15 +99,15 @@ public:
             m_modelTransforms.data()[i] = {objects[i].getTransform()};
         }
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 2, 1, &m_descriptorSetFrameLevel, 0, nullptr);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &m_descriptorSetFrameLevel, 0, nullptr);
 
         // TODO group by vertex buffer and material
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
         for (uint32_t i = 0; i < objects.size(); i++) {
             auto const& object = objects[i];
             VkDescriptorSet transformDescriptorSet = m_modelTransformDescriptorSets[i];
-            std::array descriptorSets = {transformDescriptorSet, object.materialDescriptorSet};
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
+            std::array descriptorSets = {object.materialDescriptorSet, transformDescriptorSet};
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 1, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
             VkBuffer vertexBuffers[] = { object.vertexBuffer };
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);

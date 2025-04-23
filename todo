@@ -17,6 +17,9 @@ Rendering
 - Particle systems (cpu/gpu compute)
 
 Organizational
+- Extract descriptor management from pipeline classes, because descriptors can be shared between pipelines
+ - Frame-level descriptor set is shared
+ - https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html#descriptorsets-compatibility
 - Reduce main function size
 - Use vk-bootstrap
 - vulkan.h vs vulkan.hpp

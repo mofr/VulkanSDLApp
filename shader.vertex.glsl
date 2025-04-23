@@ -11,12 +11,13 @@ layout(location = 2) out vec3 fragColor;
 layout(location = 3) out vec2 fragUV;
 layout(location = 4) out vec3 cameraPos;
 
-layout(set = 0, binding = 0) uniform ModelTransform {
-    mat4 model;
-};
-layout(set = 2, binding = 0) uniform ViewProjection {
+layout(set = 0, binding = 0) uniform ViewProjection {
     mat4 view;
     mat4 projection;
+};
+
+layout(set = 2, binding = 0) uniform ModelTransform {
+    mat4 model;
 };
 
 void main() {

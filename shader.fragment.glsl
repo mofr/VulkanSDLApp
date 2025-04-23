@@ -8,6 +8,20 @@ layout(location = 4) in vec3 cameraPos;
 
 layout(location = 0) out vec4 outColor;
 
+struct Light {
+    vec3 pos;
+    float _padding1;
+    vec3 diffuseFactor;
+    float _padding2;
+};
+
+layout(set = 0, binding = 1) uniform LightBlock {
+    Light lights[8];
+    int lightCount;
+};
+
+layout(set = 0, binding = 2) uniform samplerCube env;
+
 layout(set = 1, binding = 0) uniform sampler2D diffuseTexture;
 layout(set = 1, binding = 1) uniform MaterialProps {
     vec3 diffuseFactor;
@@ -17,20 +31,6 @@ layout(set = 1, binding = 1) uniform MaterialProps {
     float specularHardness;
     float specularPower;
 };
-
-struct Light {
-    vec3 pos;
-    float _padding1;
-    vec3 diffuseFactor;
-    float _padding2;
-};
-
-layout(set = 2, binding = 1) uniform LightBlock {
-    Light lights[8];
-    int lightCount;
-};
-
-layout(set = 2, binding = 2) uniform samplerCube env;
 
 void main() {
     vec3 N = normalize(fragNormal);
