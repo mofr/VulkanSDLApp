@@ -9,57 +9,40 @@
 class CubemapBackgroundPipeline {
 public:
     CubemapBackgroundPipeline(
-        VkPhysicalDevice physicalDevice,
         VkDevice device,
         VkExtent2D extent,
         VkRenderPass renderPass,
         VkSampleCountFlagBits msaaSamples,
-        VkImageView imageView
-    ): m_device(device), m_viewProjection(physicalDevice, device) {
-        m_descriptorSetLayout = createDescriptorSetLayout(device);
-        m_layout = createPipelineLayout(device, {m_descriptorSetLayout});
+        VkDescriptorSetLayout frameLevelDescriptorSetLayout
+    ): m_device(device) {
+        m_layout = createPipelineLayout(device, {frameLevelDescriptorSetLayout});
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
-        m_descriptorPool = createDescriptorPool(device);
-        m_sampler = createTextureSampler(device, 0, 1);
-        m_descriptorSet = createDescriptorSet(imageView, m_sampler);
+    }
+
+    ~CubemapBackgroundPipeline() {
+        vkDestroyPipeline(m_device, m_pipeline, nullptr);
+        vkDestroyPipelineLayout(m_device, m_layout, nullptr);
     }
 
     void draw(
         VkCommandBuffer commandBuffer,
-        glm::mat4 const& projection,
-        glm::mat4 const& view
+        VkDescriptorSet frameLevelDescriptorSet
     ) {
-        m_viewProjection.data() = {view, projection};
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
-        std::array descriptorSets = {m_descriptorSet};
+        std::array descriptorSets = {frameLevelDescriptorSet};
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
         vkCmdDraw(commandBuffer, 36, 1, 0, 0);
     }
 
 private:
-    struct ViewProjection {
-        glm::mat4 view;
-        glm::mat4 projection;
-    };
-
-    VkDevice m_device;
-    VkPipelineLayout m_layout;
-    VkPipeline m_pipeline;
-    VkDescriptorPool m_descriptorPool;
-    VkDescriptorSetLayout m_descriptorSetLayout;
-    VkDescriptorSet m_descriptorSet;
-
-    UniformBuffer<ViewProjection> m_viewProjection;
-
-    VkSampler m_sampler;
-
     static VkPipelineLayout createPipelineLayout(VkDevice device, std::vector<VkDescriptorSetLayout> const& descriptorSetLayout) {
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .setLayoutCount = static_cast<uint32_t>(descriptorSetLayout.size()),
+            .pSetLayouts = descriptorSetLayout.data(),
+            .pushConstantRangeCount = 0,
+        };
         VkPipelineLayout pipelineLayout;
-        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = descriptorSetLayout.size();
-        pipelineLayoutInfo.pSetLayouts = descriptorSetLayout.data();
-        pipelineLayoutInfo.pushConstantRangeCount = 0; // No push constants
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
@@ -184,83 +167,7 @@ private:
         return graphicsPipeline;
     }
 
-    static VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device) {
-        std::array bindings = {
-            VkDescriptorSetLayoutBinding{
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
-            },
-            VkDescriptorSetLayoutBinding{
-                .binding = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-            },
-        };
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = bindings.size();
-        layoutInfo.pBindings = bindings.data();
-
-        VkDescriptorSetLayout descriptorSetLayout;
-        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-        return descriptorSetLayout;
-    }
-
-    static VkDescriptorPool createDescriptorPool(VkDevice device) {
-        std::array poolSizes = {
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=1},
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1},
-        };
-        VkDescriptorPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.poolSizeCount = poolSizes.size();
-        poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = 1;
-
-        VkDescriptorPool descriptorPool;
-        vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
-        return descriptorPool;
-    }
-
-    VkDescriptorSet createDescriptorSet(VkImageView imageView, VkSampler sampler) {
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = m_descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &m_descriptorSetLayout;
-        VkDescriptorSet descriptorSet;
-        vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
-
-        VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo();
-        VkDescriptorImageInfo imageInfo {
-            .sampler = sampler,
-            .imageView = imageView,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-        };
-        std::array writes = {
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = descriptorSet,
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &viewProjectionBufferInfo,
-            },
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = descriptorSet,
-                .dstBinding = 1,
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pImageInfo = &imageInfo,
-            },
-        };
-        vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
-        return descriptorSet;
-    }
+    VkDevice m_device;
+    VkPipelineLayout m_layout;
+    VkPipeline m_pipeline;
 };

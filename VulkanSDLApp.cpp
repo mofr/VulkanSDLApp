@@ -70,14 +70,159 @@ MeshObject transferModelToGpu(VulkanContext vulkanContext, float maxAnisotropy, 
     return object;
 }
 
-static void check_vk_result(VkResult err)
-{
-    if (err == 0)
-        return;
-    fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
-    if (err < 0)
-        abort();
-}
+class FrameLevelResources {
+public:
+    struct Light {
+        glm::vec3 pos;
+        float _padding1;
+        glm::vec3 diffuseFactor;
+        float _padding2;
+    };
+
+    FrameLevelResources(
+        VkPhysicalDevice physicalDevice,
+        VkDevice device,
+        VkImageView environmentImageView,
+        VkSampler environmentSampler
+    ):
+        m_device(device),
+        m_viewProjection(physicalDevice, device),
+        m_lightBlock(physicalDevice, device)
+    {
+        m_descriptorPool = createDescriptorPool(device);
+        m_descriptorSetLayout = createDescriptorSetLayout(device);
+        m_descriptorSet = createDescriptorSet(environmentImageView, environmentSampler);
+    }
+
+    VkDescriptorSetLayout descriptorSetLayout() const {return m_descriptorSetLayout;}
+    VkDescriptorSet descriptorSet() const {return m_descriptorSet;}
+
+    void setViewProjection(glm::mat4 const& view, glm::mat4 const& projection) {
+        m_viewProjection.data() = {view, projection};
+    }
+
+    void setLights(std::vector<Light> const& lights) {
+        m_lightBlock.data().lightCount = std::min(8, (int)lights.size());
+        std::copy_n(std::begin(lights), m_lightBlock.data().lightCount, std::begin(m_lightBlock.data().lights));
+    }
+
+private:
+    struct ViewProjection {
+        glm::mat4 view;
+        glm::mat4 projection;
+    };
+
+    struct LightBlock {
+        std::array<Light, 8> lights;
+        int lightCount;
+    };
+
+    static VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device) {
+        std::array bindings = {
+            VkDescriptorSetLayoutBinding {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            },
+            VkDescriptorSetLayoutBinding {
+                .binding = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            VkDescriptorSetLayoutBinding {
+                .binding = 2,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+        };
+        VkDescriptorSetLayoutCreateInfo layoutInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = bindings.size(),
+            .pBindings = bindings.data(),
+        };
+        
+        VkDescriptorSetLayout descriptorSetLayout;
+        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+        return descriptorSetLayout;
+    }
+
+    static VkDescriptorPool createDescriptorPool(VkDevice device) {
+        std::array poolSizes = {
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=2},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1},
+        };
+        VkDescriptorPoolCreateInfo poolInfo {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .poolSizeCount = poolSizes.size(),
+            .pPoolSizes = poolSizes.data(),
+            .maxSets = 1,
+        };
+
+        VkDescriptorPool descriptorPool;
+        vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
+        return descriptorPool;
+    }
+
+    VkDescriptorSet createDescriptorSet(VkImageView environmentImageView, VkSampler environmentSampler) {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = m_descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &m_descriptorSetLayout;
+        VkDescriptorSet descriptorSet;
+        vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
+        {
+            VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo();
+            VkDescriptorBufferInfo lightBlockBufferInfo = m_lightBlock.descriptorBufferInfo();
+            VkDescriptorImageInfo envInfo {
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = environmentImageView,
+                .sampler = environmentSampler,
+            };
+            std::array writes = {
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSet,
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &viewProjectionBufferInfo,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSet,
+                    .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &lightBlockBufferInfo,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSet,
+                    .dstBinding = 2,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .pImageInfo = &envInfo,
+                },
+            };
+            vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
+        }
+        return descriptorSet;
+    }
+
+    VkDevice m_device;
+    UniformBuffer<ViewProjection> m_viewProjection;
+    UniformBuffer<LightBlock> m_lightBlock;
+    VkDescriptorSetLayout m_descriptorSetLayout;
+    VkDescriptorPool m_descriptorPool;
+    VkDescriptorSet m_descriptorSet;
+};
 
 int main() {
     VulkanContext vulkanContext;
@@ -133,28 +278,34 @@ int main() {
         &environmentImageView
     );
 
-    CubemapBackgroundPipeline backgroundPipeline(
+    VkSampler environmentSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, 0);
+
+    FrameLevelResources frameLevelResources(
         vulkanContext.physicalDevice,
+        vulkanContext.device,
+        environmentImageView,
+        environmentSampler
+    );
+
+    CubemapBackgroundPipeline backgroundPipeline(
         vulkanContext.device,
         renderSurface.getExtent(),
         renderSurface.getRenderPass(),
         renderSurface.getMsaaSamples(),
-        environmentImageView
+        frameLevelResources.descriptorSetLayout()
     );
 
-    VkSampler environmentSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, 0);
     Pipeline pipeline(
         vulkanContext.physicalDevice,
         vulkanContext.device,
         renderSurface.getExtent(),
         renderSurface.getRenderPass(),
         renderSurface.getMsaaSamples(),
-        1024,
-        environmentImageView,
-        environmentSampler
+        frameLevelResources.descriptorSetLayout(),
+        1024
     );
     std::vector<MeshObject> meshObjects;
-    std::vector<Pipeline::Light> lights;
+    std::vector<FrameLevelResources::Light> lights;
 
     {
         Model woodenStoolModel = loadObj("assets/wooden_stool_02_4k.obj");
@@ -172,7 +323,7 @@ int main() {
         MeshObject lightObj1 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel1);
         lightObj1.position = {-1.5f, 1.0f, 1.0f};
         meshObjects.push_back(lightObj1);
-        lights.push_back(Pipeline::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}});
+        lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}});
     }
 
     {
@@ -183,7 +334,7 @@ int main() {
         MeshObject lightObj2 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel2);
         lightObj2.position = {1.5f, 1.0f, 1.0f};
         meshObjects.push_back(lightObj2);
-        lights.push_back(Pipeline::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}});
+        lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}});
     }
 
     {
@@ -232,7 +383,6 @@ int main() {
         .ImageCount = 3,
         .MSAASamples = config.msaaSamples,
         .Allocator = nullptr,
-        .CheckVkResultFn = check_vk_result,
     };
     ImGui_ImplVulkan_Init(&init_info);
 
@@ -275,18 +425,18 @@ int main() {
 
         RenderSurface::Frame frame = renderSurface.beginFrame();
 
+        frameLevelResources.setViewProjection(camera.getViewMatrix(), camera.getProjectionMatrix());
+        frameLevelResources.setLights(lights);
+
         backgroundPipeline.draw(
             frame.commandBuffer,
-            camera.getProjectionMatrix(),
-            camera.getViewMatrix()
+            frameLevelResources.descriptorSet()
         );
 
         pipeline.draw(
             frame.commandBuffer,
-            camera.getProjectionMatrix(),
-            camera.getViewMatrix(),
-            meshObjects,
-            lights
+            frameLevelResources.descriptorSet(),
+            meshObjects
         );
 
         ImGui_ImplVulkan_NewFrame();
@@ -331,7 +481,6 @@ int main() {
                     .ImageCount = 2,
                     .MSAASamples = config.msaaSamples,
                     .Allocator = nullptr,
-                    .CheckVkResultFn = check_vk_result,
                 };
                 ImGui_ImplVulkan_Init(&init_info);
             }
@@ -339,10 +488,7 @@ int main() {
     }
 
     // Cleanup
-    {
-        VkResult err = vkDeviceWaitIdle(vulkanContext.device);
-        check_vk_result(err);
-    }
+    vkDeviceWaitIdle(vulkanContext.device);
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();

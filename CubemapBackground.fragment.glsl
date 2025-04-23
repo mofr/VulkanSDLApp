@@ -3,8 +3,8 @@
 layout(location = 0) in vec3 inTexCoord;
 layout(location = 0) out vec4 outColor;
 
-layout(set = 0, binding = 1) uniform samplerCube skybox;
+layout(set = 0, binding = 2) uniform samplerCube env;
 
 void main() {
-    outColor = texture(skybox, inTexCoord);
+    outColor = texture(env, inTexCoord);
 }

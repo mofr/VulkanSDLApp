@@ -33,26 +33,21 @@ public:
         VkExtent2D extent, 
         VkRenderPass renderPass, 
         VkSampleCountFlagBits msaaSamples,
-        uint32_t poolSize,
-        VkImageView environmentImageView,
-        VkSampler environmentSampler
+        VkDescriptorSetLayout frameLevelDescriptorSetLayout,
+        uint32_t poolSize
     ):
-        m_viewProjection(physicalDevice, device),
-        m_lightBlock(physicalDevice, device),
+        m_physicalDevice(physicalDevice),
+        m_device(device),
         m_modelTransforms(physicalDevice, device, poolSize),
         m_msaaSamples(msaaSamples),
         m_extent(extent),
         m_renderPass(renderPass)
     {
-        m_physicalDevice = physicalDevice;
-        m_device = device;
-        m_descriptorSetLayoutFrameLevel = createDescriptorSetLayoutFrameLevel(device);
         m_descriptorSetLayoutMaterial = createDescriptorSetLayoutMaterial(device);
         m_descriptorSetLayoutModelTransform = createDescriptorSetLayoutModelTransform(device);
-        m_layout = createPipelineLayout(device, {m_descriptorSetLayoutFrameLevel, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutModelTransform});
+        m_layout = createPipelineLayout(device, {frameLevelDescriptorSetLayout, m_descriptorSetLayoutMaterial, m_descriptorSetLayoutModelTransform});
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
         m_descriptorPool = createDescriptorPool(device, poolSize);
-        m_descriptorSetFrameLevel = createDescriptorSetFrameLevel(environmentImageView, environmentSampler);
         m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
 
@@ -73,36 +68,19 @@ public:
         float specularPower = 1.0f;
     };
 
-    struct Light {
-        glm::vec3 pos;
-        float _padding1;
-        glm::vec3 diffuseFactor;
-        float _padding2;
-    };
-
-    struct LightBlock {
-        std::array<Light, 8> lights;
-        int lightCount;
-    };
-
     void draw(
         VkCommandBuffer commandBuffer,
-        glm::mat4 const& projection,
-        glm::mat4 const& view,
-        std::vector<MeshObject> const& objects,
-        std::vector<Light> const& lights
+        VkDescriptorSet frameLevelDescriptorSet,
+        std::vector<MeshObject> const& objects
     ) {
-        m_viewProjection.data() = {view, projection};
-        m_lightBlock.data().lightCount = std::min(8, (int)lights.size());
-        std::copy_n(std::begin(lights), m_lightBlock.data().lightCount, std::begin(m_lightBlock.data().lights));
         for (size_t i = 0; i < objects.size(); ++i) {
             m_modelTransforms.data()[i] = {objects[i].getTransform()};
         }
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &m_descriptorSetFrameLevel, 0, nullptr);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &frameLevelDescriptorSet, 0, nullptr);
 
         // TODO group by vertex buffer and material
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
         for (uint32_t i = 0; i < objects.size(); i++) {
             auto const& object = objects[i];
             VkDescriptorSet transformDescriptorSet = m_modelTransformDescriptorSets[i];
@@ -160,11 +138,6 @@ private:
         glm::mat4 model;
     };
 
-    struct ViewProjection {
-        glm::mat4 view;
-        glm::mat4 projection;
-    };
-
     VkDescriptorSet createMaterialDescriptorSet() const {
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -202,56 +175,6 @@ private:
         };
         vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         return descriptorSets;
-    }
-
-    VkDescriptorSet createDescriptorSetFrameLevel(VkImageView environmentImageView, VkSampler environmentSampler) {
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = m_descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &m_descriptorSetLayoutFrameLevel;
-        VkDescriptorSet descriptorSet;
-        vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
-        {
-            VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo();
-            VkDescriptorBufferInfo lightBlockBufferInfo = m_lightBlock.descriptorBufferInfo();
-            VkDescriptorImageInfo envInfo {
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                .imageView = environmentImageView,
-                .sampler = environmentSampler,
-            };
-            std::array writes = {
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = descriptorSet,
-                    .dstBinding = 0,
-                    .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .pBufferInfo = &viewProjectionBufferInfo,
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = descriptorSet,
-                    .dstBinding = 1,
-                    .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .pBufferInfo = &lightBlockBufferInfo,
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = descriptorSet,
-                    .dstBinding = 2,
-                    .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 1,
-                    .pImageInfo = &envInfo,
-                },
-            };
-            vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
-        }
-        return descriptorSet;
     }
 
     static VkDescriptorSetLayout createDescriptorSetLayoutModelTransform(VkDevice device) {
@@ -292,38 +215,6 @@ private:
         layoutInfo.bindingCount = bindings.size();
         layoutInfo.pBindings = bindings.data();
 
-        VkDescriptorSetLayout descriptorSetLayout;
-        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-        return descriptorSetLayout;
-    }
-
-    static VkDescriptorSetLayout createDescriptorSetLayoutFrameLevel(VkDevice device) {
-        std::array bindings = {
-            VkDescriptorSetLayoutBinding {
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            },
-            VkDescriptorSetLayoutBinding {
-                .binding = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            },
-            VkDescriptorSetLayoutBinding {
-                .binding = 2,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            },
-        };
-        VkDescriptorSetLayoutCreateInfo layoutInfo{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = bindings.size(),
-            .pBindings = bindings.data(),
-        };
-        
         VkDescriptorSetLayout descriptorSetLayout;
         vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
         return descriptorSetLayout;
@@ -514,12 +405,7 @@ private:
     VkDescriptorPool m_descriptorPool;
     VkDescriptorSetLayout m_descriptorSetLayoutModelTransform;
     VkDescriptorSetLayout m_descriptorSetLayoutMaterial;
-    VkDescriptorSetLayout m_descriptorSetLayoutFrameLevel;
-    VkDescriptorSet m_descriptorSetFrameLevel;
     std::vector<VkDescriptorSet> m_modelTransformDescriptorSets;
-
-    UniformBuffer<ViewProjection> m_viewProjection;
-    UniformBuffer<LightBlock> m_lightBlock;
     UniformBuffer<ModelTransform[]> m_modelTransforms;
 
     VkSampleCountFlagBits m_msaaSamples;
