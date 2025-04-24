@@ -10,9 +10,15 @@ struct RenderingConfig {
     float maxAnisotropy = 0;
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     bool useMipMaps = true;
+    int environmentIndex = 0;
 };
 
-bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDeviceProperties const& physicalDeviceProperties) {
+bool renderingConfigGui(
+    RenderingConfig& config,
+    float dt,
+    VkPhysicalDeviceProperties const& physicalDeviceProperties,
+    std::span<const char*> environments
+) {
     auto fps = static_cast<int>(1.0f / dt);
     bool changed = false;
 
@@ -64,6 +70,17 @@ bool renderingConfigGui(RenderingConfig& config, float dt, VkPhysicalDevicePrope
         if (ImGui::SliderInt("Multisampling", &elem, 0, elemCount - 1, labels[elem])) {
             changed = true;
             config.msaaSamples = values[elem];
+        }
+    }
+    {
+        if (ImGui::BeginCombo("Environment", environments[config.environmentIndex])) {
+            for (size_t i = 0; i < environments.size(); ++i) {
+                if (ImGui::Selectable(environments[i], i == static_cast<size_t>(config.environmentIndex))) {
+                    changed = true;
+                    config.environmentIndex = i;
+                }
+            }
+            ImGui::EndCombo();
         }
     }
     ImGui::End();

@@ -190,6 +190,7 @@ public:
     uint32_t getImageCount() const { return m_framesInFlight; }
     VkRenderPass getRenderPass() const { return m_renderPass; }
     VkSampleCountFlagBits getMsaaSamples() const { return m_msaaSamples; }
+    uint32_t getFramesInFlight() const { return m_framesInFlight; }
     
     // Config changes
     void setVsync(bool enabled) {

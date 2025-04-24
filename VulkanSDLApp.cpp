@@ -82,28 +82,48 @@ public:
     FrameLevelResources(
         VkPhysicalDevice physicalDevice,
         VkDevice device,
-        VkImageView environmentImageView,
-        VkSampler environmentSampler
+        uint32_t framesInFlight
     ):
         m_device(device),
-        m_viewProjection(physicalDevice, device),
-        m_lightBlock(physicalDevice, device)
+        m_viewProjection(physicalDevice, device, framesInFlight),
+        m_lightBlock(physicalDevice, device, framesInFlight)
     {
-        m_descriptorPool = createDescriptorPool(device);
+        m_descriptorPool = createDescriptorPool(device, framesInFlight);
         m_descriptorSetLayout = createDescriptorSetLayout(device);
-        m_descriptorSet = createDescriptorSet(environmentImageView, environmentSampler);
+        m_descriptorSets = createDescriptorSets(framesInFlight);
     }
 
     VkDescriptorSetLayout descriptorSetLayout() const {return m_descriptorSetLayout;}
-    VkDescriptorSet descriptorSet() const {return m_descriptorSet;}
+    VkDescriptorSet descriptorSet(int frameIndex) const {return m_descriptorSets[frameIndex];}
 
-    void setViewProjection(glm::mat4 const& view, glm::mat4 const& projection) {
-        m_viewProjection.data() = {view, projection};
+    void setViewProjection(int frameIndex, glm::mat4 const& view, glm::mat4 const& projection) {
+        m_viewProjection.data()[frameIndex] = {view, projection};
     }
 
-    void setLights(std::vector<Light> const& lights) {
-        m_lightBlock.data().lightCount = std::min(8, (int)lights.size());
-        std::copy_n(std::begin(lights), m_lightBlock.data().lightCount, std::begin(m_lightBlock.data().lights));
+    void setLights(int frameIndex, std::vector<Light> const& lights) {
+        LightBlock& lightBlock = m_lightBlock.data()[frameIndex];
+        lightBlock.lightCount = std::min(8, (int)lights.size());
+        std::copy_n(std::begin(lights), lightBlock.lightCount, std::begin(lightBlock.lights));
+    }
+
+    void setEnvironment(int frameIndex, VkImageView imageView, VkSampler sampler) {
+        VkDescriptorImageInfo envInfo {
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = imageView,
+            .sampler = sampler,
+        };
+        std::array writes = {
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = m_descriptorSets[frameIndex],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pImageInfo = &envInfo,
+            },
+        };
+        vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
     }
 
 private:
@@ -115,6 +135,9 @@ private:
     struct LightBlock {
         std::array<Light, 8> lights;
         int lightCount;
+        int _pad1;
+        int _pad2;
+        int _pad3;
     };
 
     static VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device) {
@@ -149,16 +172,16 @@ private:
         return descriptorSetLayout;
     }
 
-    static VkDescriptorPool createDescriptorPool(VkDevice device) {
+    static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t framesInFlight) {
         std::array poolSizes = {
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=2},
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=2 * framesInFlight},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1 * framesInFlight},
         };
         VkDescriptorPoolCreateInfo poolInfo {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
             .poolSizeCount = poolSizes.size(),
             .pPoolSizes = poolSizes.data(),
-            .maxSets = 1,
+            .maxSets = framesInFlight,
         };
 
         VkDescriptorPool descriptorPool;
@@ -166,26 +189,23 @@ private:
         return descriptorPool;
     }
 
-    VkDescriptorSet createDescriptorSet(VkImageView environmentImageView, VkSampler environmentSampler) {
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = m_descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &m_descriptorSetLayout;
-        VkDescriptorSet descriptorSet;
-        vkAllocateDescriptorSets(m_device, &allocInfo, &descriptorSet);
-        {
-            VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo();
-            VkDescriptorBufferInfo lightBlockBufferInfo = m_lightBlock.descriptorBufferInfo();
-            VkDescriptorImageInfo envInfo {
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                .imageView = environmentImageView,
-                .sampler = environmentSampler,
-            };
+    std::vector<VkDescriptorSet> createDescriptorSets(uint32_t framesInFlight) {
+        std::vector<VkDescriptorSetLayout> layouts(framesInFlight, m_descriptorSetLayout);
+        VkDescriptorSetAllocateInfo allocInfo {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = m_descriptorPool,
+            .descriptorSetCount = framesInFlight,
+            .pSetLayouts = layouts.data(),
+        };
+        std::vector<VkDescriptorSet> descriptorSets(framesInFlight);
+        vkAllocateDescriptorSets(m_device, &allocInfo, descriptorSets.data());
+        for (uint32_t i = 0; i < framesInFlight; i++) {
+            VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo(i);
+            VkDescriptorBufferInfo lightBlockBufferInfo = m_lightBlock.descriptorBufferInfo(i);
             std::array writes = {
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = descriptorSet,
+                    .dstSet = descriptorSets[i],
                     .dstBinding = 0,
                     .dstArrayElement = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -194,34 +214,25 @@ private:
                 },
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = descriptorSet,
+                    .dstSet = descriptorSets[i],
                     .dstBinding = 1,
                     .dstArrayElement = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     .descriptorCount = 1,
                     .pBufferInfo = &lightBlockBufferInfo,
                 },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = descriptorSet,
-                    .dstBinding = 2,
-                    .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 1,
-                    .pImageInfo = &envInfo,
-                },
             };
             vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         }
-        return descriptorSet;
+        return descriptorSets;
     }
 
     VkDevice m_device;
-    UniformBuffer<ViewProjection> m_viewProjection;
-    UniformBuffer<LightBlock> m_lightBlock;
     VkDescriptorSetLayout m_descriptorSetLayout;
     VkDescriptorPool m_descriptorPool;
-    VkDescriptorSet m_descriptorSet;
+    std::vector<VkDescriptorSet> m_descriptorSets;
+    UniformBuffer<ViewProjection[]> m_viewProjection;
+    UniformBuffer<LightBlock[]> m_lightBlock;
 };
 
 int main() {
@@ -259,8 +270,8 @@ int main() {
         .msaaSamples = config.msaaSamples,
     });
 
-    VkImage environmentImage;
-    VkImageView environmentImageView;
+    VkImage environmentImage1;
+    VkImageView environmentImageView1;
     loadCubemap(
         vulkanContext.physicalDevice,
         vulkanContext.device,
@@ -274,17 +285,64 @@ int main() {
             "build/golden_gate_hills_4k/pz.exr",
             "build/golden_gate_hills_4k/nz.exr",
         },
-        &environmentImage,
-        &environmentImageView
+        &environmentImage1,
+        &environmentImageView1
+    );
+    VkImage environmentImage2;
+    VkImageView environmentImageView2;
+    loadCubemap(
+        vulkanContext.physicalDevice,
+        vulkanContext.device,
+        vulkanContext.commandPool,
+        vulkanContext.graphicsQueue,
+        {
+            "build/mirrored_hall_1k/px.exr",
+            "build/mirrored_hall_1k/nx.exr",
+            "build/mirrored_hall_1k/py.exr",
+            "build/mirrored_hall_1k/ny.exr",
+            "build/mirrored_hall_1k/pz.exr",
+            "build/mirrored_hall_1k/nz.exr",
+        },
+        &environmentImage2,
+        &environmentImageView2
+    );
+    VkImage environmentImage3;
+    VkImageView environmentImageView3;
+    loadCubemap(
+        vulkanContext.physicalDevice,
+        vulkanContext.device,
+        vulkanContext.commandPool,
+        vulkanContext.graphicsQueue,
+        {
+            "assets/debug-cubemap/px.png",
+            "assets/debug-cubemap/nx.png",
+            "assets/debug-cubemap/py.png",
+            "assets/debug-cubemap/ny.png",
+            "assets/debug-cubemap/pz.png",
+            "assets/debug-cubemap/nz.png",
+        },
+        &environmentImage3,
+        &environmentImageView3
     );
 
+    std::array environmentLabels = {
+        "Golden Gate Hills",
+        "Mirrored Hall",
+        "Debug Cubemap",
+    };
+    std::array environmentImageViews = {
+        environmentImageView1,
+        environmentImageView2,
+        environmentImageView3,
+    };
+
+    VkImageView environmentImageView = environmentImageViews[0];
     VkSampler environmentSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, 0);
 
     FrameLevelResources frameLevelResources(
         vulkanContext.physicalDevice,
         vulkanContext.device,
-        environmentImageView,
-        environmentSampler
+        renderSurface.getFramesInFlight()
     );
 
     CubemapBackgroundPipeline backgroundPipeline(
@@ -375,14 +433,12 @@ int main() {
         .Device = vulkanContext.device,
         .QueueFamily = vulkanContext.graphicsQueueFamilyIndex,
         .Queue = vulkanContext.graphicsQueue,
-        .PipelineCache = nullptr,
         .DescriptorPoolSize = 2,
         .RenderPass = renderSurface.getRenderPass(),
         .Subpass = 0,
         .MinImageCount = 3,
         .ImageCount = 3,
         .MSAASamples = config.msaaSamples,
-        .Allocator = nullptr,
     };
     ImGui_ImplVulkan_Init(&init_info);
 
@@ -425,24 +481,25 @@ int main() {
 
         RenderSurface::Frame frame = renderSurface.beginFrame();
 
-        frameLevelResources.setViewProjection(camera.getViewMatrix(), camera.getProjectionMatrix());
-        frameLevelResources.setLights(lights);
+        frameLevelResources.setViewProjection(frame.swapchainImageIndex, camera.getViewMatrix(), camera.getProjectionMatrix());
+        frameLevelResources.setLights(frame.swapchainImageIndex, lights);
+        frameLevelResources.setEnvironment(frame.swapchainImageIndex, environmentImageView, environmentSampler);
 
         backgroundPipeline.draw(
             frame.commandBuffer,
-            frameLevelResources.descriptorSet()
+            frameLevelResources.descriptorSet(frame.swapchainImageIndex)
         );
 
         pipeline.draw(
             frame.commandBuffer,
-            frameLevelResources.descriptorSet(),
+            frameLevelResources.descriptorSet(frame.swapchainImageIndex),
             meshObjects
         );
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-        bool configChanged = renderingConfigGui(stagingConfig, dt, vulkanContext.physicalDeviceProperties);
+        bool configChanged = renderingConfigGui(stagingConfig, dt, vulkanContext.physicalDeviceProperties, environmentLabels);
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();
         ImGui_ImplVulkan_RenderDrawData(imguiDrawData, frame.commandBuffer);
@@ -473,16 +530,17 @@ int main() {
                     .Device = vulkanContext.device,
                     .QueueFamily = vulkanContext.graphicsQueueFamilyIndex,
                     .Queue = vulkanContext.graphicsQueue,
-                    .PipelineCache = nullptr,
                     .DescriptorPoolSize = 2,
                     .RenderPass = renderSurface.getRenderPass(),
                     .Subpass = 0,
                     .MinImageCount = 2,
                     .ImageCount = 2,
                     .MSAASamples = config.msaaSamples,
-                    .Allocator = nullptr,
                 };
                 ImGui_ImplVulkan_Init(&init_info);
+            }
+            if (config.environmentIndex != oldConfig.environmentIndex) {
+                environmentImageView = environmentImageViews[config.environmentIndex];
             }
         }
     }

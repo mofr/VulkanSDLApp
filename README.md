@@ -8,6 +8,13 @@ Process assets: `./build/ProcessAssets`
 
 Run: `./build/VulkanSDLApp`
 
+vulkan.h vs vulkan.hpp
+======================
+
+The project uses vulkan.h as it's primary Vulkan API. It lacks some things like RAII, but that's what I just handle in the code on my own.
+
+Since it's educational project and I learn both graphics in general and Vulkan API, I think it's much more valuable to do so using C API even if it lacks some syntax sugar.
+
 Coordinate systems
 ==================
 

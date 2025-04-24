@@ -1,5 +1,5 @@
 Rendering
-- Add environment switcher
+- Add surface format switcher
 - Animate lights (position and color/intensity)
 - Add sun light / point light distinction
 - Implement normal mapping
@@ -20,7 +20,6 @@ Rendering
 Organizational
 - Reduce main function size
 - Use vk-bootstrap
-- vulkan.h vs vulkan.hpp
 
 Other
 - gltf
