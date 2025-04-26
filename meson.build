@@ -53,6 +53,7 @@ dependencies = [
         dependency('sdl2'),
         dependency('vulkan'),
         dependency('glm'),
+        dependency('ktx'),
         shaders_dep,
 ]
 

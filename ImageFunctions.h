@@ -5,6 +5,7 @@
 #include <stb_image.h>
 #include <tinyexr.h>
 #include <vulkan/vulkan.h>
+#include <Profiler.h>
 
 struct ImageData {
     std::unique_ptr<void, decltype(&free)> data{nullptr, free};
@@ -15,7 +16,9 @@ struct ImageData {
 };
 
 ImageData loadImage(std::string const& filename) {
+    PROFILE_ME;
     if (filename.ends_with(".exr")) {
+        PROFILE_ME_AS("exr");
         float *rgba = nullptr;
         int width, height;
         const char *err = nullptr;
@@ -52,6 +55,7 @@ ImageData loadImage(std::string const& filename) {
         return result;
     }
     else {
+        PROFILE_ME_AS("stbi");
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 

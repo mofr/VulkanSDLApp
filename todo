@@ -4,7 +4,6 @@ Rendering
 - Implement normal mapping
 - Implement PBR
 - Environment cubemap
- - Load cubemap from KTX
  - IBL: use environment texture to handle diffuse and reflections
 - Separate the following data per frame in flight
  - Model transform descriptors

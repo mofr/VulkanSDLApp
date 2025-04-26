@@ -6,6 +6,7 @@
 #include <vulkan/vk_enum_string_helper.h>
 #include "ImageFunctions.h"
 #include "Vertex.h"
+#include <Profiler.h>
 
 uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;
@@ -497,6 +498,7 @@ void loadCubemap(
     VkImage* image,
     VkImageView* imageView
 ) {
+    PROFILE_ME_AS("loadCubemap");
     std::array imageDatas = {
         loadImage(filenames[0]),
         loadImage(filenames[1]),

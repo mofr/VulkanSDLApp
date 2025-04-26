@@ -1,6 +1,6 @@
 How to build and run
 ====================
-Setup build dir: `meson setup build` (`meson setup build --reconfigure` to reconfigure)
+Setup build dir: `meson setup build --buildtype release` (Add `--reconfigure` to reconfigure)
 
 Build: `meson compile -C build`
 

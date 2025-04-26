@@ -15,6 +15,8 @@
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 
+#include <ktxvulkan.h>
+
 #include "Pipeline.h"
 #include "CubemapBackgroundPipeline.h"
 #include "Vertex.h"
@@ -29,6 +31,8 @@
 #include "FlyingCameraController.h"
 #include "RenderSurface.h"
 #include "RenderingConfig.h"
+#include "Profiler.h"
+#include "TextureLoader.h"
 
 
 VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
@@ -236,6 +240,7 @@ private:
 };
 
 int main() {
+    PROFILE_ME;
     VulkanContext vulkanContext;
     RenderingConfig config {
         .vsyncEnabled = true,
@@ -289,6 +294,12 @@ int main() {
     });
     config.surfaceFormat = renderSurface.getFormat();
 
+    TextureLoader textureLoader(
+        vulkanContext.physicalDevice,
+        vulkanContext.device,
+        vulkanContext.graphicsQueue,
+        vulkanContext.commandPool
+    );
     VkImage environmentImage1;
     VkImageView environmentImageView1;
     loadCubemap(
@@ -325,8 +336,8 @@ int main() {
         &environmentImage2,
         &environmentImageView2
     );
-    VkImage environmentImage3;
-    VkImageView environmentImageView3;
+    VkImage environmentImage4;
+    VkImageView environmentImageView4;
     loadCubemap(
         vulkanContext.physicalDevice,
         vulkanContext.device,
@@ -340,21 +351,24 @@ int main() {
             "assets/debug-cubemap/pz.png",
             "assets/debug-cubemap/nz.png",
         },
-        &environmentImage3,
-        &environmentImageView3
+        &environmentImage4,
+        &environmentImageView4
     );
+
+    VkImageView environmentImageView3 = textureLoader.loadKtx("assets/cubemap_yokohama_rgba.ktx");
 
     std::array environmentLabels = {
         "Golden Gate Hills",
         "Mirrored Hall",
+        "Yokohama",
         "Debug Cubemap",
     };
     std::array environmentImageViews = {
         environmentImageView1,
         environmentImageView2,
         environmentImageView3,
+        environmentImageView4,
     };
-
 
     std::vector<VkSurfaceFormatKHR> supportedSurfaceFormats;
     for (const auto& surfaceFormat : preferredSurfaceFormats) {
@@ -475,6 +489,9 @@ int main() {
     };
     ImGui_ImplVulkan_Init(&init_info);
 
+    PROFILE_END;
+    profiler::getInstance().print(std::cout, 60);
+
     typedef std::chrono::steady_clock Clock;
     auto lastUpdateTime = Clock::now();
     bool running = true;
@@ -515,7 +532,7 @@ int main() {
         RenderSurface::Frame frame = renderSurface.beginFrame();
 
         frameLevelResources.setViewProjection(frame.swapchainImageIndex, camera.getViewMatrix(), camera.getProjectionMatrix());
-        frameLevelResources.setLights(frame.swapchainImageIndex, lights);
+        // frameLevelResources.setLights(frame.swapchainImageIndex, lights);
         frameLevelResources.setEnvironment(frame.swapchainImageIndex, environmentImageView, environmentSampler);
 
         backgroundPipeline.draw(

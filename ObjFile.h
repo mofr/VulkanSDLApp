@@ -26,6 +26,7 @@ void normalizeModel(std::vector<Vertex>& vertices, float size = 1) {
 }
 
 Model loadObj(const std::string& filePath) {
+    PROFILE_ME;
     tinyobj::ObjReaderConfig reader_config;
     reader_config.mtl_search_path = "";
 
