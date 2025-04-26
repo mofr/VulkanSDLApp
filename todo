@@ -1,5 +1,4 @@
 Rendering
-- Add surface format switcher
 - Animate lights (position and color/intensity)
 - Add sun light / point light distinction
 - Implement normal mapping
@@ -8,8 +7,6 @@ Rendering
  - Load cubemap from KTX
  - IBL: use environment texture to handle diffuse and reflections
 - Separate the following data per frame in flight
- - ViewTransform buffer
- - Light block
  - Model transform descriptors
 - Shadow maps
  - Requires separate render pass(es) so need to extract this part from RenderSurface
@@ -22,6 +19,7 @@ Organizational
 - Use vk-bootstrap
 
 Other
+- Use SDL_Vulkan_GetInstanceExtensions
 - gltf
 - Build to web
 - Separate presentation (swapchain) and rendering. Do not render directly to swapchain images. It's required to render in HDR when display support only LDR.

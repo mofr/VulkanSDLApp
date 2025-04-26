@@ -2,7 +2,8 @@
 
 #include <vulkan/vulkan.h>
 #include <iostream>
-#include <set>
+
+#include "SurfaceFormatSet.h"
 
 class Swapchain {
 public:
@@ -33,7 +34,8 @@ public:
             }
         }
 
-        m_surfaceFormat = chooseSurfaceFormat(physicalDevice, surface, preferredFormats);
+        m_supportedFormats = getSupportedFormats(physicalDevice, surface);
+        m_surfaceFormat = chooseSurfaceFormat(preferredFormats, m_supportedFormats);
 
         VkSwapchainCreateInfoKHR swapchainInfo{};
         swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -129,11 +131,14 @@ public:
         return m_imageViews[i];
     }
 
+    const SurfaceFormatSet& getSupportedFormats() const {
+        return m_supportedFormats;
+    }
+
 private:
-    static VkSurfaceFormatKHR chooseSurfaceFormat(
+    static SurfaceFormatSet getSupportedFormats(
         VkPhysicalDevice physicalDevice,
-        VkSurfaceKHR surface,
-        std::vector<VkSurfaceFormatKHR> preferredFormats
+        VkSurfaceKHR surface
     ) {
         uint32_t formatCount;
         if (vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr) != VK_SUCCESS) {
@@ -143,12 +148,15 @@ private:
         if (vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, supportedFormats.data()) != VK_SUCCESS) {
             throw std::runtime_error("Failed to get surface formats!");
         }
-        std::set<std::tuple<VkFormat, VkColorSpaceKHR>> supportedFormatsSet;
-        for (const auto& supportedFormat : supportedFormats) {
-            supportedFormatsSet.insert({supportedFormat.format, supportedFormat.colorSpace});
-        }
+        return SurfaceFormatSet(supportedFormats.begin(), supportedFormats.end());
+    }
+
+    static VkSurfaceFormatKHR chooseSurfaceFormat(
+        std::vector<VkSurfaceFormatKHR> preferredFormats,
+        SurfaceFormatSet supportedFormats
+    ) {
         for (const VkSurfaceFormatKHR& preferredFormat : preferredFormats) {
-            if (supportedFormatsSet.contains({preferredFormat.format, preferredFormat.colorSpace})) {
+            if (supportedFormats.contains(preferredFormat)) {
                 return preferredFormat;
             }
         }
@@ -165,4 +173,5 @@ private:
     std::vector<VkSemaphore> m_imageAvailableSemaphores;
     uint32_t m_currentFrame = 0;
     std::unique_ptr<Swapchain> m_oldSwapchain;
+    SurfaceFormatSet m_supportedFormats;
 };

@@ -102,7 +102,7 @@ public:
 
     void setLights(int frameIndex, std::vector<Light> const& lights) {
         LightBlock& lightBlock = m_lightBlock.data()[frameIndex];
-        lightBlock.lightCount = std::min(8, (int)lights.size());
+        lightBlock.lightCount = (int) std::min(lightBlock.lights.size(), lights.size());
         std::copy_n(std::begin(lights), lightBlock.lightCount, std::begin(lightBlock.lights));
     }
 
@@ -237,12 +237,11 @@ private:
 
 int main() {
     VulkanContext vulkanContext;
-    RenderingConfig config{
+    RenderingConfig config {
         .vsyncEnabled = true,
         .maxAnisotropy = vulkanContext.physicalDeviceProperties.limits.maxSamplerAnisotropy,
         .msaaSamples = VK_SAMPLE_COUNT_4_BIT,
     };
-    RenderingConfig stagingConfig = config;
 
     uint32_t width = 1024;
     uint32_t height = 768;
@@ -256,11 +255,30 @@ int main() {
         SDL_Quit();
         return -1;
     }
+
+    // TODO
+    // Use ImGuiSelectableFlags_Disabled for surface format groups (surfaceFormatLabels) which don't have no surface format supported
+    // When we select from surfaceFormatLabels - pass new preferredSurfaceFormats array to RenderSurface
+    std::vector<VkSurfaceFormatKHR> preferredSurfaceFormats = {
+        // Ideal: linear color, float format (HDR)
+        { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
+        { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_BT2020_LINEAR_EXT },
+        { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT },
+
+        // Acceptable: 10-bit UNORM linear (less precision but linear)
+        { VK_FORMAT_A2R10G10B10_UNORM_PACK32, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
+        { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
+
+        // Fallbacks: sRGB, with automatic gamma correction on write
+        { VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+        { VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+    };
     RenderSurface renderSurface({
         .instance = vulkanContext.instance,
         .physicalDevice = vulkanContext.physicalDevice,
         .device = vulkanContext.device,
         .window = window,
+        .preferredSurfaceFormats = preferredSurfaceFormats,
         .graphicsQueue = vulkanContext.graphicsQueue,
         .presentQueue = vulkanContext.graphicsQueue,
         .graphicsQueueFamilyIndex = vulkanContext.graphicsQueueFamilyIndex,
@@ -269,6 +287,7 @@ int main() {
         .vsyncEnabled = config.vsyncEnabled,
         .msaaSamples = config.msaaSamples,
     });
+    config.surfaceFormat = renderSurface.getFormat();
 
     VkImage environmentImage1;
     VkImageView environmentImageView1;
@@ -334,6 +353,20 @@ int main() {
         environmentImageView1,
         environmentImageView2,
         environmentImageView3,
+    };
+
+
+    std::vector<VkSurfaceFormatKHR> supportedSurfaceFormats;
+    for (const auto& surfaceFormat : preferredSurfaceFormats) {
+        if (renderSurface.isFormatSupported(surfaceFormat)) {
+            supportedSurfaceFormats.push_back(surfaceFormat);
+        }
+    }
+
+    RenderingConfigOptions renderingConfigOptions {
+        .physicalDeviceProperties = vulkanContext.physicalDeviceProperties,
+        .environments = environmentLabels,
+        .surfaceFormats = supportedSurfaceFormats,
     };
 
     VkImageView environmentImageView = environmentImageViews[0];
@@ -499,7 +532,8 @@ int main() {
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-        bool configChanged = renderingConfigGui(stagingConfig, dt, vulkanContext.physicalDeviceProperties, environmentLabels);
+        RenderingConfig stagingConfig = config;
+        bool configChanged = renderingConfigGui(stagingConfig, renderingConfigOptions, dt);
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();
         ImGui_ImplVulkan_RenderDrawData(imguiDrawData, frame.commandBuffer);
@@ -521,27 +555,32 @@ int main() {
             }
             if (config.msaaSamples != oldConfig.msaaSamples) {
                 renderSurface.setMsaaSamples(config.msaaSamples);
-                pipeline.setMsaaSamples(config.msaaSamples, renderSurface.getRenderPass());
-
-                ImGui_ImplVulkan_Shutdown();
-                ImGui_ImplVulkan_InitInfo init_info {
-                    .Instance = vulkanContext.instance,
-                    .PhysicalDevice = vulkanContext.physicalDevice,
-                    .Device = vulkanContext.device,
-                    .QueueFamily = vulkanContext.graphicsQueueFamilyIndex,
-                    .Queue = vulkanContext.graphicsQueue,
-                    .DescriptorPoolSize = 2,
-                    .RenderPass = renderSurface.getRenderPass(),
-                    .Subpass = 0,
-                    .MinImageCount = 2,
-                    .ImageCount = 2,
-                    .MSAASamples = config.msaaSamples,
-                };
-                ImGui_ImplVulkan_Init(&init_info);
             }
             if (config.environmentIndex != oldConfig.environmentIndex) {
                 environmentImageView = environmentImageViews[config.environmentIndex];
             }
+            if (config.surfaceFormat != oldConfig.surfaceFormat) {
+                renderSurface.setFormat(config.surfaceFormat);
+            }
+
+            pipeline.updateRenderPass(renderSurface.getRenderPass(), config.msaaSamples);
+            backgroundPipeline.updateRenderPass(renderSurface.getRenderPass(), config.msaaSamples);
+
+            ImGui_ImplVulkan_Shutdown();
+            ImGui_ImplVulkan_InitInfo init_info {
+                .Instance = vulkanContext.instance,
+                .PhysicalDevice = vulkanContext.physicalDevice,
+                .Device = vulkanContext.device,
+                .QueueFamily = vulkanContext.graphicsQueueFamilyIndex,
+                .Queue = vulkanContext.graphicsQueue,
+                .DescriptorPoolSize = 2,
+                .RenderPass = renderSurface.getRenderPass(),
+                .Subpass = 0,
+                .MinImageCount = 2,
+                .ImageCount = 2,
+                .MSAASamples = config.msaaSamples,
+            };
+            ImGui_ImplVulkan_Init(&init_info);
         }
     }
 

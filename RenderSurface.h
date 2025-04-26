@@ -24,6 +24,7 @@ public:
         VkInstance instance;
         VkPhysicalDevice physicalDevice;
         VkDevice device;
+        std::vector<VkSurfaceFormatKHR> preferredSurfaceFormats;
         VkQueue graphicsQueue;
         VkQueue presentQueue;
         uint32_t graphicsQueueFamilyIndex;
@@ -44,6 +45,7 @@ public:
         m_physicalDevice(args.physicalDevice),
         m_device(args.device),
         m_window(args.window),
+        m_preferredSurfaceFormats(args.preferredSurfaceFormats),
         m_graphicsQueue(args.graphicsQueue),
         m_presentQueue(args.presentQueue),
         m_vsyncEnabled(args.vsyncEnabled),
@@ -58,26 +60,10 @@ public:
             std::cerr << SDL_GetError() << std::endl;
             throw std::runtime_error("Failed to create Vulkan surface");
         }
-
-        m_preferredSurfaceFormats = {
-            // Ideal: linear color, float format (HDR)
-            { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
-            { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT },
-            { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_BT2020_LINEAR_EXT },
-    
-            // Acceptable: 10-bit UNORM linear (less precision but linear)
-            { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
-            { VK_FORMAT_A2R10G10B10_UNORM_PACK32, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
-    
-            // Fallbacks: sRGB, with automatic gamma correction on write
-            { VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
-            { VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
-        };
-
         m_swapchain = std::make_unique<Swapchain>(args.physicalDevice, args.device, m_surface, args.extent, args.framesInFlight, args.vsyncEnabled, m_preferredSurfaceFormats);
         createDepthImage(args.extent);
         createColorImage(args.extent);
-        createRenderPass();
+        createRenderPass(m_swapchain->getFormat().format);
         createFramebuffers();
         createCommandBuffers(args.graphicsQueueFamilyIndex);
         createSyncObjects();
@@ -185,12 +171,16 @@ public:
 
     // Getters
     VkExtent2D getExtent() const { return m_swapchain->getExtent(); }
+    VkSurfaceFormatKHR getFormat() const { return m_swapchain->getFormat(); }
     VkFormat getImageFormat() const { return m_swapchain->getFormat().format; }
     VkFormat getDepthFormat() const { return m_depthFormat; }
     uint32_t getImageCount() const { return m_framesInFlight; }
     VkRenderPass getRenderPass() const { return m_renderPass; }
     VkSampleCountFlagBits getMsaaSamples() const { return m_msaaSamples; }
     uint32_t getFramesInFlight() const { return m_framesInFlight; }
+    bool isFormatSupported(VkSurfaceFormatKHR surfaceFormat) const {
+        return m_swapchain->getSupportedFormats().contains(surfaceFormat);
+    }
     
     // Config changes
     void setVsync(bool enabled) {
@@ -202,8 +192,12 @@ public:
     void setMsaaSamples(VkSampleCountFlagBits samples) {
         if (samples == m_msaaSamples) return;
         m_msaaSamples = samples;
-        vkDestroyRenderPass(m_device, m_renderPass, nullptr);
-        createRenderPass();
+        recreateSwapchain();
+    }
+
+    void setFormat(VkSurfaceFormatKHR format) {
+        m_preferredSurfaceFormats.clear();
+        m_preferredSurfaceFormats.push_back(format);
         recreateSwapchain();
     }
 
@@ -322,9 +316,9 @@ private:
         vkDestroyImage(m_device, m_colorImage, nullptr);
     }
 
-    void createRenderPass() {
+    void createRenderPass(VkFormat format) {
         VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = m_swapchain->getFormat().format;
+        colorAttachment.format = format;
         colorAttachment.samples = m_msaaSamples;
         colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -344,7 +338,7 @@ private:
         depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         VkAttachmentDescription colorAttachmentResolve{};
-        colorAttachmentResolve.format = m_swapchain->getFormat().format;
+        colorAttachmentResolve.format = format;
         colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
         colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -404,6 +398,9 @@ private:
         m_swapchain = std::make_unique<Swapchain>(m_physicalDevice, m_device, m_surface, extent, m_framesInFlight, m_vsyncEnabled, m_preferredSurfaceFormats, std::move(m_swapchain));
         createColorImage(extent);
         createDepthImage(extent);
+
+        vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+        createRenderPass(m_swapchain->getFormat().format);
         createFramebuffers();
     }
 

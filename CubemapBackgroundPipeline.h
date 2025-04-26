@@ -14,7 +14,12 @@ public:
         VkRenderPass renderPass,
         VkSampleCountFlagBits msaaSamples,
         VkDescriptorSetLayout frameLevelDescriptorSetLayout
-    ): m_device(device) {
+    ): 
+        m_device(device), 
+        m_renderPass(renderPass),
+        m_extent(extent),
+        m_msaaSamples(msaaSamples)
+    {
         m_layout = createPipelineLayout(device, {frameLevelDescriptorSetLayout});
         m_pipeline = createPipeline(device, extent, renderPass, m_layout, msaaSamples);
     }
@@ -22,6 +27,13 @@ public:
     ~CubemapBackgroundPipeline() {
         vkDestroyPipeline(m_device, m_pipeline, nullptr);
         vkDestroyPipelineLayout(m_device, m_layout, nullptr);
+    }
+
+    void updateRenderPass(VkRenderPass renderPass, VkSampleCountFlagBits msaaSamples) {
+        m_msaaSamples = msaaSamples;
+        m_renderPass = renderPass;
+        vkDestroyPipeline(m_device, m_pipeline, nullptr);
+        m_pipeline = createPipeline(m_device, m_extent, m_renderPass, m_layout, m_msaaSamples);
     }
 
     void draw(
@@ -168,6 +180,9 @@ private:
     }
 
     VkDevice m_device;
+    VkRenderPass m_renderPass;
+    VkExtent2D m_extent;
+    VkSampleCountFlagBits m_msaaSamples;
     VkPipelineLayout m_layout;
     VkPipeline m_pipeline;
 };

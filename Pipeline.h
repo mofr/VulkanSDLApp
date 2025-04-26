@@ -51,9 +51,8 @@ public:
         m_modelTransformDescriptorSets = createDescriptorSetsModelTransforms(poolSize);
     }
 
-    void setMsaaSamples(VkSampleCountFlagBits samples, VkRenderPass renderPass) {
-        if (samples == m_msaaSamples && renderPass == m_renderPass) return;
-        m_msaaSamples = samples;
+    void updateRenderPass(VkRenderPass renderPass, VkSampleCountFlagBits msaaSamples) {
+        m_msaaSamples = msaaSamples;
         m_renderPass = renderPass;
         vkDestroyPipeline(m_device, m_pipeline, nullptr);
         m_pipeline = createPipeline(m_device, m_extent, m_renderPass, m_layout, m_msaaSamples);
