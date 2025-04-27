@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <tinyexr.h>
 #include <iostream>
+#include <ktx.h>
+#include <vulkan/vulkan.h>
 
 enum CubemapFace {
     POSITIVE_X = 0,
@@ -125,14 +127,14 @@ void equirectangularToCubemapFace(
     }
 }
 
-int convertEquirectangularToCubemap(const char* inputFilename, const char* outputDir, int faceSize) {
+int convertEquirectangularToCubemap(const char* inputFileName, const char* outputDir, int faceSize) {
     float* rgba = nullptr;
     int width, height;
     {
         const char *err = nullptr;
-        int loadExrResult = LoadEXR(&rgba, &width, &height, inputFilename, &err);
+        int loadExrResult = LoadEXR(&rgba, &width, &height, inputFileName, &err);
         if (TINYEXR_SUCCESS != loadExrResult) {
-            std::cerr << "Failed to load EXR file '" << inputFilename << "' code = " << loadExrResult << std::endl;
+            std::cerr << "Failed to load EXR file '" << inputFileName << "' code = " << loadExrResult << std::endl;
             if (err) {
                 std::cerr << err << std::endl;
                 FreeEXRErrorMessage(err);
@@ -153,7 +155,7 @@ int convertEquirectangularToCubemap(const char* inputFilename, const char* outpu
         const char* err = nullptr;
         int saveExrResult = SaveEXR(outputData.get(), faceSize, faceSize, 4, 0, outputFilepath.c_str(), &err);
         if (TINYEXR_SUCCESS != saveExrResult) {
-            std::cerr << "Failed to save EXR file '" << inputFilename << "' code = " << saveExrResult << std::endl;
+            std::cerr << "Failed to save EXR file '" << inputFileName << "' code = " << saveExrResult << std::endl;
             if (err) {
                 std::cerr << err << std::endl;
                 FreeEXRErrorMessage(err);
@@ -161,5 +163,71 @@ int convertEquirectangularToCubemap(const char* inputFilename, const char* outpu
             return -1;
         }
     }
+    return 0;
+}
+
+int convertEquirectangularToCubemapKtx(const char* inputFileName, const char* outputFileName, int faceSize) {
+    float* rgba = nullptr;
+    int width, height;
+    {
+        const char *err = nullptr;
+        int loadExrResult = LoadEXR(&rgba, &width, &height, inputFileName, &err);
+        if (TINYEXR_SUCCESS != loadExrResult) {
+            std::cerr << "Failed to load EXR file '" << inputFileName << "' code = " << loadExrResult << std::endl;
+            if (err) {
+                std::cerr << err << std::endl;
+                FreeEXRErrorMessage(err);
+            }
+            return -1;
+        }
+    }
+
+    ktxTexture2* texture;
+    KTX_error_code result;
+    
+    ktxTextureCreateInfo createInfo = {
+        .vkFormat = VK_FORMAT_R32G32B32A32_SFLOAT,
+        .baseWidth = static_cast<ktx_uint32_t>(faceSize),
+        .baseHeight = static_cast<ktx_uint32_t>(faceSize),
+        .baseDepth = 1,
+        .numDimensions = 2,
+        .numLevels = 1,
+        .numLayers = 1,
+        .numFaces = 6,
+        .isArray = KTX_FALSE,
+        .generateMipmaps = KTX_FALSE,
+    };
+    result = ktxTexture2_Create(
+        &createInfo,
+        KTX_TEXTURE_CREATE_ALLOC_STORAGE,
+        &texture
+    );
+    if (result != KTX_SUCCESS) {
+        std::cerr << ktxErrorString(result) << std::endl;
+        return -1;
+    }
+    
+    ktx_size_t srcSize = 4 * 4 * faceSize * faceSize;
+    auto outputData = std::make_unique<float[]>(4 * faceSize * faceSize);
+    ktx_uint32_t level = 0;
+    ktx_uint32_t layer = 0;
+    for (ktx_uint32_t faceSlice = 0; faceSlice < 6; faceSlice++) {
+        equirectangularToCubemapFace(rgba, width, height, outputData.get(), faceSize, static_cast<CubemapFace>(faceSlice));
+        result = ktxTexture_SetImageFromMemory(
+            ktxTexture(texture),
+            level,
+            layer,
+            faceSlice,
+            (ktx_uint8_t*)outputData.get(),
+            srcSize
+        );
+        if (result != KTX_SUCCESS) {
+            std::cerr << ktxErrorString(result) << std::endl;
+            return -1;
+        }
+    }
+    
+    ktxTexture_WriteToNamedFile(ktxTexture(texture), outputFileName);
+    ktxTexture_Destroy(ktxTexture(texture));
     return 0;
 }

@@ -261,9 +261,6 @@ int main() {
         return -1;
     }
 
-    // TODO
-    // Use ImGuiSelectableFlags_Disabled for surface format groups (surfaceFormatLabels) which don't have no surface format supported
-    // When we select from surfaceFormatLabels - pass new preferredSurfaceFormats array to RenderSurface
     std::vector<VkSurfaceFormatKHR> preferredSurfaceFormats = {
         // Ideal: linear color, float format (HDR)
         { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
@@ -300,45 +297,10 @@ int main() {
         vulkanContext.graphicsQueue,
         vulkanContext.commandPool
     );
-    VkImage environmentImage1;
-    VkImageView environmentImageView1;
-    loadCubemap(
-        vulkanContext.physicalDevice,
-        vulkanContext.device,
-        vulkanContext.commandPool,
-        vulkanContext.graphicsQueue,
-        {
-            "build/golden_gate_hills_4k/px.exr",
-            "build/golden_gate_hills_4k/nx.exr",
-            "build/golden_gate_hills_4k/py.exr",
-            "build/golden_gate_hills_4k/ny.exr",
-            "build/golden_gate_hills_4k/pz.exr",
-            "build/golden_gate_hills_4k/nz.exr",
-        },
-        &environmentImage1,
-        &environmentImageView1
-    );
-    VkImage environmentImage2;
-    VkImageView environmentImageView2;
-    loadCubemap(
-        vulkanContext.physicalDevice,
-        vulkanContext.device,
-        vulkanContext.commandPool,
-        vulkanContext.graphicsQueue,
-        {
-            "build/mirrored_hall_1k/px.exr",
-            "build/mirrored_hall_1k/nx.exr",
-            "build/mirrored_hall_1k/py.exr",
-            "build/mirrored_hall_1k/ny.exr",
-            "build/mirrored_hall_1k/pz.exr",
-            "build/mirrored_hall_1k/nz.exr",
-        },
-        &environmentImage2,
-        &environmentImageView2
-    );
-    VkImage environmentImage4;
-    VkImageView environmentImageView4;
-    loadCubemap(
+    VkImageView environmentImageView1 = textureLoader.loadKtx("build/golden_gate_hills_4k.ktx2");
+    VkImageView environmentImageView2 = textureLoader.loadKtx("build/mirrored_hall_1k.ktx2");
+    VkImageView environmentImageView3 = textureLoader.loadKtx("assets/cubemap_yokohama_rgba.ktx");
+    VkImageView environmentImageView4 = textureLoader.loadCubemap(
         vulkanContext.physicalDevice,
         vulkanContext.device,
         vulkanContext.commandPool,
@@ -350,12 +312,8 @@ int main() {
             "assets/debug-cubemap/ny.png",
             "assets/debug-cubemap/pz.png",
             "assets/debug-cubemap/nz.png",
-        },
-        &environmentImage4,
-        &environmentImageView4
+        }
     );
-
-    VkImageView environmentImageView3 = textureLoader.loadKtx("assets/cubemap_yokohama_rgba.ktx");
 
     std::array environmentLabels = {
         "Golden Gate Hills",

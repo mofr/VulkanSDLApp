@@ -48,14 +48,7 @@ foreach shader_file : shader_list
 endforeach
 
 shaders_dep = declare_dependency(sources: compiled_shaders)
-
-dependencies = [
-        dependency('sdl2'),
-        dependency('vulkan'),
-        dependency('glm'),
-        dependency('ktx'),
-        shaders_dep,
-]
+ktx_dep = dependency('ktx')
 
 ProcessEnvmap  = executable(
         'ProcessEnvmap',
@@ -68,6 +61,9 @@ ProcessEnvmap  = executable(
                 '3rdparty/miniz.c',
                 ],
         include_directories: ['3rdparty'],
+        dependencies: [
+                ktx_dep,
+        ],
 )
 
 ProcessAssets  = executable(
@@ -81,6 +77,9 @@ ProcessAssets  = executable(
                 '3rdparty/miniz.c',
                 ],
         include_directories: ['3rdparty'],
+        dependencies: [
+                ktx_dep,
+        ],
 )
 
 app = executable(
@@ -128,6 +127,12 @@ app = executable(
                 '3rdparty/imgui_impl_vulkan.cpp',
         ],
         install : true,
-        dependencies: dependencies,
+        dependencies: [
+                dependency('sdl2'),
+                dependency('vulkan'),
+                dependency('glm'),
+                ktx_dep,
+                shaders_dep,
+        ],
         include_directories: ['3rdparty'],
 )
