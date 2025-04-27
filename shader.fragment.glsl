@@ -34,7 +34,7 @@ layout(set = 1, binding = 1) uniform MaterialProps {
 
 void main() {
     vec3 N = normalize(fragNormal);
-    vec3 ambient = vec3(texture(env, N));
+    vec3 ambient = vec3(0.0); // vec3(texture(env, N));
     vec3 diffuseColor = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
     vec3 viewDir = normalize(cameraPos - fragPosition);
 

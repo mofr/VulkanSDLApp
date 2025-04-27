@@ -382,11 +382,11 @@ int main() {
         Model lightModel1;
         lightModel1.vertices = createSphereMesh(2, 0.05);
         lightModel1.material.diffuseFactor = glm::vec3{0.0f};
-        lightModel1.material.emitFactor = 5.0f * glm::vec3{1.0f, 0.5f, 0.5f};
+        lightModel1.material.emitFactor = 5.0f * glm::vec3{1.0f, 0.5f, 0.2f};
         MeshObject lightObj1 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel1);
-        lightObj1.position = {-1.5f, 1.0f, 1.0f};
+        lightObj1.position = {-1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj1);
-        lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.4f}});
+        lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.2f}});
     }
 
     {
@@ -395,7 +395,7 @@ int main() {
         lightModel2.material.diffuseFactor = glm::vec3{0.0f};
         lightModel2.material.emitFactor = 5.0f * glm::vec3{0.5f, 0.5f, 1.0f};
         MeshObject lightObj2 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel2);
-        lightObj2.position = {1.5f, 1.0f, 1.0f};
+        lightObj2.position = {1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj2);
         lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}});
     }
@@ -412,9 +412,18 @@ int main() {
 
         Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.5f, 0.5f, 0.5f}};
         Model model{vertices, floorMaterial};
-        MeshObject floorObj;
-        floorObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
+        MeshObject floorObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
         meshObjects.push_back(floorObj);
+    }
+
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            Material material {.specularHardness = 1 + std::powf(10.0f, i), .specularPower = j * 1.5f};
+            Model model {createSphereMesh(3, 0.2), material};
+            MeshObject meshObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
+            meshObj.position = 0.5f * (glm::vec3{i - 1.5f, j, 0}) + glm::vec3{0, 0, -2.0f};
+            meshObjects.push_back(meshObj);
+        }
     }
 
     Camera camera;
@@ -490,7 +499,7 @@ int main() {
         RenderSurface::Frame frame = renderSurface.beginFrame();
 
         frameLevelResources.setViewProjection(frame.swapchainImageIndex, camera.getViewMatrix(), camera.getProjectionMatrix());
-        // frameLevelResources.setLights(frame.swapchainImageIndex, lights);
+        frameLevelResources.setLights(frame.swapchainImageIndex, lights);
         frameLevelResources.setEnvironment(frame.swapchainImageIndex, environmentImageView, environmentSampler);
 
         backgroundPipeline.draw(

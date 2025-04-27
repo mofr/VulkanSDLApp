@@ -22,3 +22,6 @@ Other
 - Build to web
 - Separate presentation (swapchain) and rendering. Do not render directly to swapchain images. It's required to render in HDR when display support only LDR.
 - Sort by Z to reduce overdraw
+
+Errors
+- imgui: vkDestroyBuffer():  can't be called on VkBuffer 0xc25c940000000820[] that is currently in use by VkCommandBuffer
