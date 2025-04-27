@@ -1,8 +1,10 @@
 Rendering
+- Tonemapping
 - Animate lights (position and color/intensity)
 - Add sun light / point light distinction
-- Implement normal mapping
+- Temperature-based color for lights
 - Implement PBR
+- Implement normal mapping
 - IBL: use environment texture to handle diffuse and reflections
 - Separate the following data per frame in flight:
  - Model transform descriptors
@@ -22,6 +24,7 @@ Other
 - Build to web
 - Separate presentation (swapchain) and rendering. Do not render directly to swapchain images. It's required to render in HDR when display support only LDR.
 - Sort by Z to reduce overdraw
+- Monitor hardware counters: HWCPipe https://github.com/akaStiX/HWCPipe
 
 Errors
 - imgui: vkDestroyBuffer():  can't be called on VkBuffer 0xc25c940000000820[] that is currently in use by VkCommandBuffer

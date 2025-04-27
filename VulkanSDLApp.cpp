@@ -382,7 +382,7 @@ int main() {
         Model lightModel1;
         lightModel1.vertices = createSphereMesh(2, 0.05);
         lightModel1.material.diffuseFactor = glm::vec3{0.0f};
-        lightModel1.material.emitFactor = 5.0f * glm::vec3{1.0f, 0.5f, 0.2f};
+        lightModel1.material.emitFactor = 10.0f * glm::vec3{1.0f, 0.5f, 0.2f};
         MeshObject lightObj1 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel1);
         lightObj1.position = {-1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj1);
@@ -393,7 +393,7 @@ int main() {
         Model lightModel2;
         lightModel2.vertices = createSphereMesh(2, 0.05);
         lightModel2.material.diffuseFactor = glm::vec3{0.0f};
-        lightModel2.material.emitFactor = 5.0f * glm::vec3{0.5f, 0.5f, 1.0f};
+        lightModel2.material.emitFactor = 10.0f * glm::vec3{0.5f, 0.5f, 1.0f};
         MeshObject lightObj2 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel2);
         lightObj2.position = {1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj2);
@@ -418,7 +418,9 @@ int main() {
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
-            Material material {.specularHardness = 1 + std::powf(10.0f, i), .specularPower = j * 1.5f};
+            static std::array specularHardness = {1.0f, 10.0f, 100.0f, 1000.0f};
+            static std::array specularPower = {0.0f, 1.0f, 5.0f, 10.0f};
+            Material material {.specularHardness = specularHardness[i], .specularPower = specularPower[j]};
             Model model {createSphereMesh(3, 0.2), material};
             MeshObject meshObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
             meshObj.position = 0.5f * (glm::vec3{i - 1.5f, j, 0}) + glm::vec3{0, 0, -2.0f};
