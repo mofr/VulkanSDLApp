@@ -2,7 +2,6 @@ Rendering
 - Tonemapping
 - Animate lights (position and color/intensity)
 - Add sun light / point light distinction
-- Temperature-based color for lights
 - Implement PBR
 - Implement normal mapping
 - IBL: use environment texture to handle diffuse and reflections

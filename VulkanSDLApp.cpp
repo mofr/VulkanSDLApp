@@ -381,6 +381,7 @@ int main() {
 
     {
         glm::vec3 color = temperatureToRgb(1000);
+        float intensity = 0.5f;
         Model lightModel1;
         lightModel1.vertices = createSphereMesh(2, 0.03);
         lightModel1.material.diffuseFactor = glm::vec3{0.0f};
@@ -388,11 +389,12 @@ int main() {
         MeshObject lightObj1 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel1);
         lightObj1.position = {-1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj1);
-        lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor=0.5f * color});
+        lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor=intensity * color});
     }
 
     {
-        glm::vec3 color = temperatureToRgb(15000);
+        glm::vec3 color = temperatureToRgb(25000);
+        float intensity = 1.5f;
         Model lightModel2;
         lightModel2.vertices = createSphereMesh(2, 0.05);
         lightModel2.material.diffuseFactor = glm::vec3{0.0f};
@@ -400,7 +402,7 @@ int main() {
         MeshObject lightObj2 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel2);
         lightObj2.position = {1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj2);
-        lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor=color});
+        lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor=intensity * color});
     }
 
     {

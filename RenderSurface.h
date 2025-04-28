@@ -12,11 +12,10 @@
 /*
 Manages:
 - Swapchain
-- Frames in flight
 - Command buffers
-- Presentation
-- Rendering synchronization
-- Render pass and framebuffers
+- Frames in flight synchronization
+- Render passes and framebuffers
+- Presentation (including tonemapping)
 */
 class RenderSurface {
 public:
@@ -148,13 +147,14 @@ public:
         }
 
         // Present the rendered image
-        VkPresentInfoKHR presentInfo{};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = &m_renderFinishedSemaphores[m_currentFrame]; // Wait for rendering to finish
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = &m_swapchain->getHandle();
-        presentInfo.pImageIndices = &frame.swapchainImageIndex;
+        VkPresentInfoKHR presentInfo {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &m_renderFinishedSemaphores[m_currentFrame], // Wait for rendering to finish
+            .swapchainCount = 1,
+            .pSwapchains = &m_swapchain->getHandle(),
+            .pImageIndices = &frame.swapchainImageIndex,
+        };
 
         VkResult presentResult = vkQueuePresentKHR(m_presentQueue, &presentInfo);
         if (presentResult == VK_SUBOPTIMAL_KHR) {
@@ -431,19 +431,21 @@ private:
     }
 
     void createCommandBuffers(uint32_t graphicsQueueFamilyIndex) {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // Enable reset command buffer
+        VkCommandPoolCreateInfo poolInfo {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .queueFamilyIndex = graphicsQueueFamilyIndex,
+            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        };
         if (vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create command pool!");
         }
         
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = m_commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // Primary command buffers can be submitted to queues
-        allocInfo.commandBufferCount = static_cast<uint32_t>(m_commandBuffers.size());
+        VkCommandBufferAllocateInfo allocInfo {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = m_commandPool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = static_cast<uint32_t>(m_commandBuffers.size()),
+        };
         if (vkAllocateCommandBuffers(m_device, &allocInfo, m_commandBuffers.data()) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate command buffers!");
         }
