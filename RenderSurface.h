@@ -28,7 +28,6 @@ public:
         VkQueue presentQueue;
         uint32_t graphicsQueueFamilyIndex;
         SDL_Window* window;
-        VkExtent2D extent;
         uint32_t framesInFlight;
         bool vsyncEnabled;
         VkSampleCountFlagBits msaaSamples;
@@ -59,17 +58,16 @@ public:
             std::cerr << SDL_GetError() << std::endl;
             throw std::runtime_error("Failed to create Vulkan surface");
         }
-        m_swapchain = std::make_unique<Swapchain>(args.physicalDevice, args.device, m_surface, args.extent, args.framesInFlight, args.vsyncEnabled, m_preferredSurfaceFormats);
+        VkExtent2D extent = getWindowExtent();
+        m_swapchain = std::make_unique<Swapchain>(args.physicalDevice, args.device, m_surface, extent, args.framesInFlight, args.vsyncEnabled, m_preferredSurfaceFormats);
         createSyncObjects();
         createCommandBuffers(args.graphicsQueueFamilyIndex);
-        createDepthImage(args.extent);
-        createColorImage(args.extent);
+        createImages(extent);
         createRenderPass(m_swapchain->getFormat().format);
     }
 
     ~RenderSurface() {
-        destroyDepthImage();
-        destroyColorImage();
+        destroyImages();
         // TODO destroy all resources
     }
 
@@ -234,7 +232,7 @@ private:
     std::vector<VkFence> m_renderFences;
     std::vector<VkCommandBuffer> m_commandBuffers;
 
-    void createDepthImage(VkExtent2D extent) {
+    void createImages(VkExtent2D extent) {
         m_depthFormat = findDepthFormat(m_physicalDevice);
         createImage(
             m_physicalDevice,
@@ -249,33 +247,21 @@ private:
             m_depthImageMemory,
             m_msaaSamples
         );
-
-        VkImageViewCreateInfo viewInfo {
+        VkImageViewCreateInfo createDepthImageViewInfo {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = m_depthImage,
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
             .format = m_depthFormat,
-            .components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
-            .components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
-            .components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
-            .components.a = VK_COMPONENT_SWIZZLE_IDENTITY,
             .subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
             .subresourceRange.baseMipLevel = 0,
             .subresourceRange.levelCount = 1,
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount = 1,
         };
-        if (vkCreateImageView(m_device, &viewInfo, nullptr, &m_depthImageView) != VK_SUCCESS) {
+        if (vkCreateImageView(m_device, &createDepthImageViewInfo, nullptr, &m_depthImageView) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create depth image view!");
         }
-    }
 
-    void destroyDepthImage() {
-        vkDestroyImageView(m_device, m_depthImageView, nullptr);
-        vkDestroyImage(m_device, m_depthImage, nullptr);
-    }
-
-    void createColorImage(VkExtent2D extent) {
         createImage(
             m_physicalDevice,
             m_device,
@@ -289,30 +275,27 @@ private:
             m_colorImageMemory,
             m_msaaSamples
         );
-
-        VkImageViewCreateInfo viewInfo {
+        VkImageViewCreateInfo createColorImageViewInfo {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = m_colorImage,
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
             .format = m_swapchain->getFormat().format,
-            .components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
-            .components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
-            .components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
-            .components.a = VK_COMPONENT_SWIZZLE_IDENTITY,
             .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .subresourceRange.baseMipLevel = 0,
             .subresourceRange.levelCount = 1,
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount = 1,
         };
-        if (vkCreateImageView(m_device, &viewInfo, nullptr, &m_colorImageView) != VK_SUCCESS) {
+        if (vkCreateImageView(m_device, &createColorImageViewInfo, nullptr, &m_colorImageView) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create color image view!");
         }
     }
 
-    void destroyColorImage() {
+    void destroyImages() {
         vkDestroyImageView(m_device, m_colorImageView, nullptr);
         vkDestroyImage(m_device, m_colorImage, nullptr);
+        vkDestroyImageView(m_device, m_depthImageView, nullptr);
+        vkDestroyImage(m_device, m_depthImage, nullptr);
     }
 
     void createRenderPass(VkFormat format) {
@@ -416,15 +399,10 @@ private:
         for (size_t i = 0; i < m_framebuffers.size(); i++) {
             vkDestroyFramebuffer(m_device, m_framebuffers[i], nullptr);
         }
-        destroyDepthImage();
-        destroyColorImage();
-        int width;
-        int height;
-        SDL_GetWindowSize(m_window, &width, &height);
-        VkExtent2D extent = {(uint32_t)width, (uint32_t)height};
+        destroyImages();
+        VkExtent2D extent = getWindowExtent();
         m_swapchain = std::make_unique<Swapchain>(m_physicalDevice, m_device, m_surface, extent, m_framesInFlight, m_vsyncEnabled, m_preferredSurfaceFormats, std::move(m_swapchain));
-        createColorImage(extent);
-        createDepthImage(extent);
+        createImages(extent);
 
         vkDestroyRenderPass(m_device, m_renderPass, nullptr);
         createRenderPass(m_swapchain->getFormat().format);
@@ -463,5 +441,12 @@ private:
             vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]);
             vkCreateFence(m_device, &fenceInfo, nullptr, &m_renderFences[i]);
         }
+    }
+
+    VkExtent2D getWindowExtent() const {
+        int width;
+        int height;
+        SDL_GetWindowSize(m_window, &width, &height);
+        return {(uint32_t)width, (uint32_t)height};
     }
 };

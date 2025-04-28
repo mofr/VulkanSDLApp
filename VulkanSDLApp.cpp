@@ -285,7 +285,6 @@ int main() {
         .graphicsQueue = vulkanContext.graphicsQueue,
         .presentQueue = vulkanContext.graphicsQueue,
         .graphicsQueueFamilyIndex = vulkanContext.graphicsQueueFamilyIndex,
-        .extent = {width, height},
         .framesInFlight = 3,
         .vsyncEnabled = config.vsyncEnabled,
         .msaaSamples = config.msaaSamples,
