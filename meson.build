@@ -105,6 +105,7 @@ app = executable(
                 'RenderSurface.h',
                 'RenderingConfig.h',
                 'UniformBuffer.h',
+                'ColorTemperature.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
                 '3rdparty/tinyexr.h',

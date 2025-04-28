@@ -33,6 +33,7 @@
 #include "RenderingConfig.h"
 #include "Profiler.h"
 #include "TextureLoader.h"
+#include "ColorTemperature.h"
 
 
 VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
@@ -379,25 +380,27 @@ int main() {
     }
 
     {
+        glm::vec3 color = temperatureToRgb(1000);
         Model lightModel1;
-        lightModel1.vertices = createSphereMesh(2, 0.05);
+        lightModel1.vertices = createSphereMesh(2, 0.03);
         lightModel1.material.diffuseFactor = glm::vec3{0.0f};
-        lightModel1.material.emitFactor = 10.0f * glm::vec3{1.0f, 0.5f, 0.2f};
+        lightModel1.material.emitFactor = 10.0f * color;
         MeshObject lightObj1 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel1);
         lightObj1.position = {-1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj1);
-        lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor={1.0f, 0.5f, 0.2f}});
+        lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor=0.5f * color});
     }
 
     {
+        glm::vec3 color = temperatureToRgb(15000);
         Model lightModel2;
         lightModel2.vertices = createSphereMesh(2, 0.05);
         lightModel2.material.diffuseFactor = glm::vec3{0.0f};
-        lightModel2.material.emitFactor = 10.0f * glm::vec3{0.5f, 0.5f, 1.0f};
+        lightModel2.material.emitFactor = 10.0f * color;
         MeshObject lightObj2 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel2);
         lightObj2.position = {1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj2);
-        lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor={0.3f, 0.5f, 1.0f}});
+        lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor=color});
     }
 
     {
