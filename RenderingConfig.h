@@ -12,6 +12,9 @@ struct RenderingConfig {
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     bool useMipMaps = true;
     int environmentIndex = 0;
+    Tonemapper::Operator tonemapOperator = Tonemapper::Operator::NoTonemapping;
+    float exposure = 1.0f;
+    float reinhardWhitePoint = 1.0f;
 };
 
 struct RenderingConfigOptions {
@@ -43,12 +46,22 @@ const char* getSurfaceFormatLabel(VkSurfaceFormatKHR surfaceFormat) {
     return "Unknown format";
 }
 
+const char* getTonemapOperatorName(Tonemapper::Operator op) {
+    switch(op) {
+        case Tonemapper::Operator::NoTonemapping: return "No tonemapping";
+        case Tonemapper::Operator::Reinhard: return "Reinhard";
+        case Tonemapper::Operator::Uncharted2: return "Uncharted2";
+        case Tonemapper::Operator::ACES: return "ACES";
+        case Tonemapper::Operator::Hejl: return "Hejl-Burgess-Dawson";
+    }
+}
+
 bool renderingConfigGui(
     RenderingConfig& config,
     RenderingConfigOptions const& options,
     float dt
 ) {
-    auto fps = static_cast<int>(1.0f / dt);
+    auto fps = static_cast<int>(ImGui::GetIO().Framerate);
     bool changed = false;
 
     ImGui::Begin("Config");
@@ -125,6 +138,29 @@ bool renderingConfigGui(
                 }
             }
             ImGui::EndCombo();
+        }
+    }
+    ImGui::SeparatorText("Tonemapping");
+    {
+        static std::array operators = {
+            Tonemapper::Operator::NoTonemapping,
+            Tonemapper::Operator::Reinhard,
+            Tonemapper::Operator::ACES,
+            Tonemapper::Operator::Uncharted2,
+            Tonemapper::Operator::Hejl,
+        };
+        if (ImGui::BeginCombo("Operator", getTonemapOperatorName(config.tonemapOperator))) {
+            for (auto op : operators) {
+                if (ImGui::Selectable(getTonemapOperatorName(op), config.tonemapOperator == op)) {
+                    changed = true;
+                    config.tonemapOperator = op;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        changed |= ImGui::DragFloat("Exposure", &config.exposure, 0.01f, 0.001f);
+        if (config.tonemapOperator == Tonemapper::Operator::Reinhard) {
+            changed |= ImGui::DragFloat("White Point", &config.reinhardWhitePoint, 0.01f, 0.001f);
         }
     }
     ImGui::End();

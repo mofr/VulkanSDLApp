@@ -133,3 +133,14 @@ Environment cubemaps
 ====================
 
 Equirectangular panoramas are converted to cubemaps at compile time (ProcessAssets.cpp).
+
+
+Descriptor set layouts
+======================
+
+Set 0: frame-level data
+  Binding 0: UBO with View and Projection matrices
+  Binding 1: UBO lights
+  Binding 2: envmap + sampler
+Set 1: material data
+Set 2: per-object data

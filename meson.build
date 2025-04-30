@@ -8,6 +8,8 @@ shader_list = [
     'shader.fragment.glsl',
     'CubemapBackground.vertex.glsl',
     'CubemapBackground.fragment.glsl',
+    'FullscreenTriangle.vertex.glsl',
+    'Tonemap.fragment.glsl',
 ]
 
 # Empty array to collect compiled shader targets
@@ -106,6 +108,7 @@ app = executable(
                 'RenderingConfig.h',
                 'UniformBuffer.h',
                 'ColorTemperature.h',
+                'Tonemapper.h',
                 '3rdparty/stb_image.cpp',
                 '3rdparty/tiny_obj_loader.cpp',
                 '3rdparty/tinyexr.h',

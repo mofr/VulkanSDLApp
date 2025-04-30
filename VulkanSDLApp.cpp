@@ -262,6 +262,13 @@ int main() {
         return -1;
     }
 
+    uint32_t framesInFlight = 3;
+    FrameLevelResources frameLevelResources(
+        vulkanContext.physicalDevice,
+        vulkanContext.device,
+        framesInFlight
+    );
+
     std::vector<VkSurfaceFormatKHR> preferredSurfaceFormats = {
         // Ideal: linear color, float format (HDR)
         { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT },
@@ -285,9 +292,11 @@ int main() {
         .graphicsQueue = vulkanContext.graphicsQueue,
         .presentQueue = vulkanContext.graphicsQueue,
         .graphicsQueueFamilyIndex = vulkanContext.graphicsQueueFamilyIndex,
-        .framesInFlight = 3,
+        .framesInFlight = framesInFlight,
         .vsyncEnabled = config.vsyncEnabled,
         .msaaSamples = config.msaaSamples,
+        .frameLevelDescriptorSetLayout = frameLevelResources.descriptorSetLayout(),
+        .renderInFormat = VK_FORMAT_R16G16B16A16_SFLOAT,
     });
     config.surfaceFormat = renderSurface.getFormat();
 
@@ -343,12 +352,6 @@ int main() {
 
     VkImageView environmentImageView = environmentImageViews[0];
     VkSampler environmentSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, 0);
-
-    FrameLevelResources frameLevelResources(
-        vulkanContext.physicalDevice,
-        vulkanContext.device,
-        renderSurface.getFramesInFlight()
-    );
 
     CubemapBackgroundPipeline backgroundPipeline(
         vulkanContext.device,
@@ -455,10 +458,10 @@ int main() {
         .Queue = vulkanContext.graphicsQueue,
         .DescriptorPoolSize = 2,
         .RenderPass = renderSurface.getRenderPass(),
-        .Subpass = 0,
+        .Subpass = 1,
         .MinImageCount = 3,
         .ImageCount = 3,
-        .MSAASamples = config.msaaSamples,
+        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
     };
     ImGui_ImplVulkan_Init(&init_info);
 
@@ -519,6 +522,9 @@ int main() {
             meshObjects
         );
 
+        renderSurface.setTonemappingParameters(config.tonemapOperator, config.exposure, config.reinhardWhitePoint);
+        renderSurface.postprocess(frame, frameLevelResources.descriptorSet(frame.swapchainImageIndex));
+
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
@@ -550,7 +556,7 @@ int main() {
                 environmentImageView = environmentImageViews[config.environmentIndex];
             }
             if (config.surfaceFormat != oldConfig.surfaceFormat) {
-                renderSurface.setFormat(config.surfaceFormat);
+                renderSurface.setDisplayFormat(config.surfaceFormat);
             }
 
             pipeline.updateRenderPass(renderSurface.getRenderPass(), config.msaaSamples);
@@ -565,10 +571,10 @@ int main() {
                 .Queue = vulkanContext.graphicsQueue,
                 .DescriptorPoolSize = 2,
                 .RenderPass = renderSurface.getRenderPass(),
-                .Subpass = 0,
-                .MinImageCount = 2,
-                .ImageCount = 2,
-                .MSAASamples = config.msaaSamples,
+                .Subpass = 1,
+                .MinImageCount = 3,
+                .ImageCount = 3,
+                .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
             };
             ImGui_ImplVulkan_Init(&init_info);
         }

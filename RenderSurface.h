@@ -8,6 +8,7 @@
 
 #include "Swapchain.h"
 #include "VulkanFunctions.h"
+#include "Tonemapper.h"
 
 /*
 Manages:
@@ -24,6 +25,7 @@ public:
         VkPhysicalDevice physicalDevice;
         VkDevice device;
         std::vector<VkSurfaceFormatKHR> preferredSurfaceFormats;
+        VkFormat renderInFormat;
         VkQueue graphicsQueue;
         VkQueue presentQueue;
         uint32_t graphicsQueueFamilyIndex;
@@ -31,6 +33,7 @@ public:
         uint32_t framesInFlight;
         bool vsyncEnabled;
         VkSampleCountFlagBits msaaSamples;
+        VkDescriptorSetLayout frameLevelDescriptorSetLayout;
     };
     struct Frame {
         VkCommandBuffer commandBuffer;
@@ -47,6 +50,8 @@ public:
         m_graphicsQueue(args.graphicsQueue),
         m_presentQueue(args.presentQueue),
         m_vsyncEnabled(args.vsyncEnabled),
+        m_frameLevelDescriptorSetLayout(args.frameLevelDescriptorSetLayout),
+        m_colorImageFormat(args.renderInFormat),
         m_msaaSamples(args.msaaSamples),
         m_framesInFlight(args.framesInFlight),
         m_framebuffers(args.framesInFlight),
@@ -63,7 +68,7 @@ public:
         createSyncObjects();
         createCommandBuffers(args.graphicsQueueFamilyIndex);
         createImages(extent);
-        createRenderPass(m_swapchain->getFormat().format);
+        createRenderPass();
     }
 
     ~RenderSurface() {
@@ -102,8 +107,9 @@ public:
         }
 
         std::array clearValues{
+            VkClearValue{.depthStencil={1.0f, 0}},
             VkClearValue{.color=clearColor},
-            VkClearValue{.depthStencil={1.0f, 0}}
+            VkClearValue{.color=clearColor},
         };
         VkRenderPassBeginInfo renderPassBeginInfo{
             .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -117,6 +123,17 @@ public:
         vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         return {commandBuffer, swapchainImageIndex, swapchainImageAvailableSemaphore};
+    }
+
+    void postprocess(Frame frame, VkDescriptorSet frameLevelDescriptorSet) {
+        vkCmdNextSubpass(frame.commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
+        m_tonemapper->tonemap(
+            frame.commandBuffer,
+            frameLevelDescriptorSet,
+            m_tonemapOperator,
+            m_exposure,
+            m_reinhardWhitePoint
+        );
     }
 
     void endFrame(Frame frame) {
@@ -192,46 +209,19 @@ public:
         recreateSwapchain();
     }
 
-    void setFormat(VkSurfaceFormatKHR format) {
+    void setDisplayFormat(VkSurfaceFormatKHR format) {
         m_preferredSurfaceFormats.clear();
         m_preferredSurfaceFormats.push_back(format);
         recreateSwapchain();
     }
 
-private:
-    VkInstance m_instance;
-    VkPhysicalDevice m_physicalDevice;
-    VkDevice m_device;
-    SDL_Window* m_window;
-    VkSurfaceKHR m_surface;
-    std::vector<VkSurfaceFormatKHR> m_preferredSurfaceFormats;
-    VkQueue m_graphicsQueue;
-    VkQueue m_presentQueue;
-    VkRenderPass m_renderPass;
-    VkCommandPool m_commandPool;
-    std::unique_ptr<Swapchain> m_swapchain;
-    bool m_vsyncEnabled;
-    
-    // Depth resources
-    VkImage m_depthImage = VK_NULL_HANDLE;
-    VkDeviceMemory m_depthImageMemory = VK_NULL_HANDLE;
-    VkImageView m_depthImageView = VK_NULL_HANDLE;
-    VkFormat m_depthFormat;
-    
-    // MSAA resources
-    VkSampleCountFlagBits m_msaaSamples;
-    VkImage m_colorImage = VK_NULL_HANDLE;
-    VkDeviceMemory m_colorImageMemory = VK_NULL_HANDLE;
-    VkImageView m_colorImageView = VK_NULL_HANDLE;
-    
-    // Framebuffers
-    uint32_t m_framesInFlight;
-    uint32_t m_currentFrame = 0;
-    std::vector<VkFramebuffer> m_framebuffers;
-    std::vector<VkSemaphore> m_renderFinishedSemaphores;
-    std::vector<VkFence> m_renderFences;
-    std::vector<VkCommandBuffer> m_commandBuffers;
+    void setTonemappingParameters(Tonemapper::Operator op, float exposure, float reinhardWhitePoint = 1.0f) {
+        m_tonemapOperator = op;
+        m_exposure = exposure;
+        m_reinhardWhitePoint = reinhardWhitePoint;
+    }
 
+private:
     void createImages(VkExtent2D extent) {
         m_depthFormat = findDepthFormat(m_physicalDevice);
         createImage(
@@ -267,19 +257,18 @@ private:
             m_device,
             extent.width,
             extent.height,
-            m_swapchain->getFormat().format,
+            m_colorImageFormat,
             VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             m_colorImage,
-            m_colorImageMemory,
-            m_msaaSamples
+            m_colorImageMemory
         );
         VkImageViewCreateInfo createColorImageViewInfo {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = m_colorImage,
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = m_swapchain->getFormat().format,
+            .format = m_colorImageFormat,
             .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .subresourceRange.baseMipLevel = 0,
             .subresourceRange.levelCount = 1,
@@ -289,28 +278,57 @@ private:
         if (vkCreateImageView(m_device, &createColorImageViewInfo, nullptr, &m_colorImageView) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create color image view!");
         }
+
+        if (m_msaaSamples > 1) {
+            createImage(
+                m_physicalDevice,
+                m_device,
+                extent.width,
+                extent.height,
+                m_colorImageFormat,
+                VK_IMAGE_TILING_OPTIMAL,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                m_multisampledColorImage,
+                m_multisampledColorImageMemory,
+                m_msaaSamples
+            );
+            VkImageViewCreateInfo createMultisampledColorImageViewInfo {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = m_multisampledColorImage,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = m_colorImageFormat,
+                .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .subresourceRange.baseMipLevel = 0,
+                .subresourceRange.levelCount = 1,
+                .subresourceRange.baseArrayLayer = 0,
+                .subresourceRange.layerCount = 1,
+            };
+            if (vkCreateImageView(m_device, &createMultisampledColorImageViewInfo, nullptr, &m_multisampledColorImageView) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create color image view!");
+            }
+        }
     }
 
     void destroyImages() {
-        vkDestroyImageView(m_device, m_colorImageView, nullptr);
-        vkDestroyImage(m_device, m_colorImage, nullptr);
+        if (m_multisampledColorImageView) {
+            vkDestroyImageView(m_device, m_multisampledColorImageView, nullptr);
+            vkDestroyImage(m_device, m_multisampledColorImage, nullptr);
+            m_multisampledColorImageView = nullptr;
+            m_multisampledColorImage = nullptr;
+        }
         vkDestroyImageView(m_device, m_depthImageView, nullptr);
         vkDestroyImage(m_device, m_depthImage, nullptr);
+        vkDestroyImageView(m_device, m_colorImageView, nullptr);
+        vkDestroyImage(m_device, m_colorImage, nullptr);
     }
 
-    void createRenderPass(VkFormat format) {
-        std::vector attachments = {
-            VkAttachmentDescription {
-                .format = format,
-                .samples = m_msaaSamples,
-                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                .finalLayout = m_msaaSamples > 1 ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-            },
-            VkAttachmentDescription {
+    void createRenderPass() {
+        std::vector<VkAttachmentDescription> attachments;
+
+        uint32_t depthAttachment = attachments.size();
+        attachments.push_back(
+            {
                 .format = m_depthFormat,
                 .samples = m_msaaSamples,
                 .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -319,40 +337,111 @@ private:
                 .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            },
-        };
-        if (m_msaaSamples > 1) {
-            attachments.push_back({
-                .format = format,
+            }
+        );
+
+        uint32_t colorAttachment = attachments.size();
+        attachments.push_back(
+            {
+                .format = m_colorImageFormat,
                 .samples = VK_SAMPLE_COUNT_1_BIT,
                 .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                 .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                 .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                 .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            }
+        );
+
+        uint32_t outputAttachment = attachments.size();
+        attachments.push_back(
+            {
+                .format = m_swapchain->getFormat().format,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            }
+        );
+
+        uint32_t msaaAttachment = attachments.size();
+        if (m_msaaSamples > 1) {
+            attachments.push_back({
+                .format = m_colorImageFormat,
+                .samples = m_msaaSamples,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             });
         }
-        VkAttachmentReference colorAttachmentRef {
-            .attachment = 0,
-            .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        };
         VkAttachmentReference depthAttachmentRef {
-            .attachment = 1,
+            .attachment = depthAttachment,
             .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
-        VkAttachmentReference colorAttachmentResolveRef {
-            .attachment = 2,
+        VkAttachmentReference colorAttachmentRef {
+            .attachment = colorAttachment,
+            .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        };
+        VkAttachmentReference postProcessInputRef {
+            .attachment = colorAttachment,
+            .layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+        VkAttachmentReference outputAttachmentRef {
+            .attachment = outputAttachment,
+            .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        };
+        VkAttachmentReference msaaAttachmentRef {
+            .attachment = msaaAttachment,
             .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
         std::array subpasses = {
             VkSubpassDescription {
                 .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
                 .colorAttachmentCount = 1,
-                .pColorAttachments = &colorAttachmentRef,
+                .pColorAttachments = m_msaaSamples > 1 ? &msaaAttachmentRef : &colorAttachmentRef,
+                .pResolveAttachments = m_msaaSamples > 1 ? &colorAttachmentRef : nullptr,
                 .pDepthStencilAttachment = &depthAttachmentRef,
-                .pResolveAttachments = m_msaaSamples > 1 ? &colorAttachmentResolveRef : nullptr,
-            }
+            },
+            VkSubpassDescription {
+                .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                .inputAttachmentCount = 1,
+                .pInputAttachments = &postProcessInputRef,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &outputAttachmentRef,
+            },
+        };
+        std::array dependencies = {
+            VkSubpassDependency {
+                .srcSubpass = VK_SUBPASS_EXTERNAL,
+                .dstSubpass = 0,
+                .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                .srcAccessMask = 0,
+                .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            },
+            VkSubpassDependency {
+                .srcSubpass = 0,
+                .dstSubpass = 1,
+                .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+            },
+            VkSubpassDependency {
+                .srcSubpass = 1,
+                .dstSubpass = VK_SUBPASS_EXTERNAL,
+                .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                .dstAccessMask = 0,
+            },
         };
         VkRenderPassCreateInfo renderPassCreateInfo {
             .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
@@ -360,38 +449,39 @@ private:
             .pAttachments = attachments.data(),
             .subpassCount = static_cast<uint32_t>(subpasses.size()),
             .pSubpasses = subpasses.data(),
+            .dependencyCount = dependencies.size(),
+            .pDependencies = dependencies.data(),
         };
         if (vkCreateRenderPass(m_device, &renderPassCreateInfo, nullptr, &m_renderPass) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create render pass!");
         }
 
+        VkExtent2D extent = m_swapchain->getExtent();
         std::vector<VkImageView> framebufferAttachments;
         for (size_t i = 0; i < m_framebuffers.size(); i++) {
+            framebufferAttachments = {
+                m_depthImageView,
+                m_colorImageView,
+                m_swapchain->getImageView(i),
+            };
             if (m_msaaSamples > 1) {
-                framebufferAttachments = {
-                    m_colorImageView,
-                    m_depthImageView,
-                    m_swapchain->getImageView(i),
-                };
-            } else {
-                framebufferAttachments = {
-                    m_swapchain->getImageView(i),
-                    m_depthImageView,
-                };
+                framebufferAttachments.push_back(m_multisampledColorImageView);
             }
             VkFramebufferCreateInfo framebufferInfo {
                 .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 .renderPass = m_renderPass,
                 .attachmentCount = static_cast<uint32_t>(framebufferAttachments.size()),
                 .pAttachments = framebufferAttachments.data(),
-                .width = m_swapchain->getExtent().width,
-                .height = m_swapchain->getExtent().height,
+                .width = extent.width,
+                .height = extent.height,
                 .layers = 1,
             };
             if (vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_framebuffers[i]) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create framebuffer!");
             }
         }
+
+        m_tonemapper = std::make_unique<Tonemapper>(m_device, m_renderPass, 1, extent, m_frameLevelDescriptorSetLayout, m_colorImageView);
     }
 
     void recreateSwapchain() {
@@ -405,7 +495,7 @@ private:
         createImages(extent);
 
         vkDestroyRenderPass(m_device, m_renderPass, nullptr);
-        createRenderPass(m_swapchain->getFormat().format);
+        createRenderPass();
     }
 
     void createCommandBuffers(uint32_t graphicsQueueFamilyIndex) {
@@ -449,4 +539,50 @@ private:
         SDL_GetWindowSize(m_window, &width, &height);
         return {(uint32_t)width, (uint32_t)height};
     }
+
+    VkInstance m_instance;
+    VkPhysicalDevice m_physicalDevice;
+    VkDevice m_device;
+    SDL_Window* m_window;
+    VkSurfaceKHR m_surface;
+    std::vector<VkSurfaceFormatKHR> m_preferredSurfaceFormats;
+    VkQueue m_graphicsQueue;
+    VkQueue m_presentQueue;
+    VkRenderPass m_renderPass;
+    VkCommandPool m_commandPool;
+    bool m_vsyncEnabled;
+    std::unique_ptr<Swapchain> m_swapchain;
+    VkDescriptorSetLayout m_frameLevelDescriptorSetLayout;
+
+    // Tone mapping
+    std::unique_ptr<Tonemapper> m_tonemapper;
+    Tonemapper::Operator m_tonemapOperator = Tonemapper::Operator::NoTonemapping;
+    float m_exposure = 1.0f;
+    float m_reinhardWhitePoint = 1.0f;
+
+    // Image before tonemapping
+    VkImage m_colorImage;
+    VkDeviceMemory m_colorImageMemory;
+    VkImageView m_colorImageView;
+    VkFormat m_colorImageFormat;
+    
+    // Depth resources
+    VkImage m_depthImage;
+    VkDeviceMemory m_depthImageMemory;
+    VkImageView m_depthImageView;
+    VkFormat m_depthFormat;
+    
+    // MSAA resources
+    VkSampleCountFlagBits m_msaaSamples;
+    VkImage m_multisampledColorImage;
+    VkDeviceMemory m_multisampledColorImageMemory;
+    VkImageView m_multisampledColorImageView;
+    
+    // Framebuffers
+    uint32_t m_framesInFlight;
+    uint32_t m_currentFrame = 0;
+    std::vector<VkFramebuffer> m_framebuffers;
+    std::vector<VkSemaphore> m_renderFinishedSemaphores;
+    std::vector<VkFence> m_renderFences;
+    std::vector<VkCommandBuffer> m_commandBuffers;
 };

@@ -15,10 +15,7 @@ The class represents a concrete Vulkan pipeline to render textured meshes.
 It requires a render pass with two attachments: color, depth.
 It requires specific vertex format: Vertex.
 Descriptor set layouts:
- Set 0: frame-level
-  Binding 0: UBO with View and Projection matrices
-  Binding 1: UBO lights
-  Binding 2: envmap + sampler
+ Set 0: frame-level data
  Set 1: material data
   Binding 0: diffuse texture + sampler
   Binding 1: UBO material props
