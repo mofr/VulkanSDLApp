@@ -70,7 +70,6 @@ public:
     
         for (const auto& device : physicalDevices) {
             VkPhysicalDeviceFeatures supportedFeatures;
-            supportedFeatures.samplerAnisotropy = VK_TRUE;
             vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
             if (!supportedFeatures.samplerAnisotropy) {
                 std::cout << "Sampler anisotropy is not supported!" << std::endl;
@@ -120,6 +119,7 @@ public:
             };
             VkPhysicalDeviceFeatures deviceFeatures{};
             deviceFeatures.samplerAnisotropy = VK_TRUE;
+            deviceFeatures.imageCubeArray = VK_TRUE;
             VkDeviceCreateInfo deviceCreateInfo{};
             deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
             deviceCreateInfo.queueCreateInfoCount = 1;

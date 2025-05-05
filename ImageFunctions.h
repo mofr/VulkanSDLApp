@@ -33,11 +33,6 @@ ImageData loadImage(std::string const& filename) {
             throw std::runtime_error(std::string("failed to load texture image! ") + filename);
         }
 
-        // reinhard tonemapping
-        // for (int i = 0; i < width * height * 4; i++) {
-            // rgba[i] = rgba[i] / (1 + rgba[i]);
-        // }
-
         // convert to 8-bit range
         // size_t dataSize = static_cast<size_t>(width * height * 4);
         // uint8_t *rgba8 = (uint8_t*) malloc(dataSize);

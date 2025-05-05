@@ -5,6 +5,8 @@
 #include <iostream>
 #include <ktx.h>
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
+#include "ImageFunctions.h"
 
 enum CubemapFace {
     POSITIVE_X = 0,
@@ -18,47 +20,51 @@ enum CubemapFace {
 // Convert 3D direction vector to 2D equirectangular coordinates
 void directionToEquirectangular(float x, float y, float z, float& u, float& v) {
     // Calculate spherical coordinates
-    float phi = atan2(z, x);
-    float theta = asin(y);
+    // x, y, z aligned with default camera orientation so that the resulting coordinates point to a center of panorama
+    float phi = atan2(x, -z); // range (-pi, pi]
+    float theta = asin(-y); // range (-pi/2, pi/2)
     
-    // Map to UV coordinates [0,1]
+    // Map to UV coordinates [0,1] where (0, 0) is the top-left corner
     u = (phi + M_PI) / (2.0f * M_PI);
     v = (theta + M_PI / 2.0f) / M_PI;
 }
 
+// Top-left corner: (x, y) = (0, 0)
+// Returns direction vector in world-space
 void facePointToDirection(CubemapFace face, int faceSize, int x, int y, float& dirX, float& dirY, float& dirZ) {
+    // uv = (-1, -1) is a top-left corner of the face looking on it from outside of the cube
     float u = (x + 0.5f) * 2 / faceSize - 1;  // [-1, 1]
     float v = (y + 0.5f) * 2 / faceSize - 1;  // [-1, 1]
 
     switch (face) {
         case POSITIVE_X:
             dirX = 1.0f;
-            dirY = v;
+            dirY = -v;
             dirZ = -u;
             break;
         case NEGATIVE_X:
             dirX = -1.0f;
-            dirY = v;
+            dirY = -v;
             dirZ = u;
             break;
         case POSITIVE_Y:
             dirX = u;
-            dirY = -1.0f;
+            dirY = 1.0f;
             dirZ = v;
             break;
         case NEGATIVE_Y:
             dirX = u;
-            dirY = 1.0f;
+            dirY = -1.0f;
             dirZ = -v;
             break;
         case POSITIVE_Z:
             dirX = u;
-            dirY = v;
+            dirY = -v;
             dirZ = 1.0f;
             break;
         case NEGATIVE_Z:
             dirX = -u;
-            dirY = v;
+            dirY = -v;
             dirZ = -1.0f;
             break;
     }
@@ -70,8 +76,11 @@ void facePointToDirection(CubemapFace face, int faceSize, int x, int y, float& d
     dirZ /= len;
 }
 
-// Sample equirectangular texture with bilinear interpolation
-void sampleEquirectangular(const float* equirectangular, int width, int height, float u, float v, float* rgba) {
+// Sample image with bilinear interpolation
+// u [0, 1]
+// v [0, 1]
+// uv = (0, 0) is the top-left corner
+void sampleImage(const float* image, int width, int height, float u, float v, float* rgba) {
     // Convert to pixel coordinates
     float x = u * (width - 1);
     float y = v * (height - 1);
@@ -88,10 +97,10 @@ void sampleEquirectangular(const float* equirectangular, int width, int height, 
     // Read four nearest pixels
     float rgba00[4], rgba01[4], rgba10[4], rgba11[4];
     for (int i = 0; i < 4; i++) {
-        rgba00[i] = equirectangular[(y0 * width + x0) * 4 + i];
-        rgba01[i] = equirectangular[(y0 * width + x1) * 4 + i];
-        rgba10[i] = equirectangular[(y1 * width + x0) * 4 + i];
-        rgba11[i] = equirectangular[(y1 * width + x1) * 4 + i];
+        rgba00[i] = image[(y0 * width + x0) * 4 + i];
+        rgba01[i] = image[(y0 * width + x1) * 4 + i];
+        rgba10[i] = image[(y1 * width + x0) * 4 + i];
+        rgba11[i] = image[(y1 * width + x1) * 4 + i];
     }
     
     // Bilinear interpolation
@@ -114,10 +123,10 @@ void equirectangularToCubemapFace(
         for (int x = 0; x < faceSize; x++) {
             float dirX, dirY, dirZ;
             facePointToDirection(face, faceSize, x, y, dirX, dirY, dirZ);
-            float equiU, equiV;
-            directionToEquirectangular(dirX, dirY, dirZ, equiU, equiV);
+            float u, v;
+            directionToEquirectangular(dirX, dirY, dirZ, u, v);
             float rgba[4];
-            sampleEquirectangular(input, inputWidth, inputHeight, equiU, equiV, rgba);
+            sampleImage(input, inputWidth, inputHeight, u, v, rgba);
 
             *(faceData++) = rgba[0];
             *(faceData++) = rgba[1];
@@ -127,21 +136,10 @@ void equirectangularToCubemapFace(
     }
 }
 
-int convertEquirectangularToCubemap(const char* inputFileName, const char* outputDir, int faceSize) {
-    float* rgba = nullptr;
-    int width, height;
-    {
-        const char *err = nullptr;
-        int loadExrResult = LoadEXR(&rgba, &width, &height, inputFileName, &err);
-        if (TINYEXR_SUCCESS != loadExrResult) {
-            std::cerr << "Failed to load EXR file '" << inputFileName << "' code = " << loadExrResult << std::endl;
-            if (err) {
-                std::cerr << err << std::endl;
-                FreeEXRErrorMessage(err);
-            }
-            return -1;
-        }
-    }
+int convertEquirectangularToCubemap(ImageData const& image, const char* outputDir, int faceSize) {
+    float* equiRgba = static_cast<float*>(image.data.get());
+    int width = image.width;
+    int height = image.height;
 
     auto outputData = std::make_unique<float[]>(faceSize * faceSize * 4);
     std::filesystem::path outputDirPath = outputDir;
@@ -149,13 +147,13 @@ int convertEquirectangularToCubemap(const char* inputFileName, const char* outpu
     static std::array faceNames = {"px", "nx", "py", "ny", "pz", "nz"};
 
     for (int faceIndex = 0; faceIndex < 6; faceIndex++) {
-        equirectangularToCubemapFace(rgba, width, height, outputData.get(), faceSize, static_cast<CubemapFace>(faceIndex));
+        equirectangularToCubemapFace(equiRgba, width, height, outputData.get(), faceSize, static_cast<CubemapFace>(faceIndex));
         std::string filename = std::string(faceNames[faceIndex]) + ".exr";
         std::filesystem::path outputFilepath = outputDirPath / filename;
         const char* err = nullptr;
         int saveExrResult = SaveEXR(outputData.get(), faceSize, faceSize, 4, 0, outputFilepath.c_str(), &err);
         if (TINYEXR_SUCCESS != saveExrResult) {
-            std::cerr << "Failed to save EXR file '" << inputFileName << "' code = " << saveExrResult << std::endl;
+            std::cerr << "Failed to save EXR file '" << outputFilepath << "' code = " << saveExrResult << std::endl;
             if (err) {
                 std::cerr << err << std::endl;
                 FreeEXRErrorMessage(err);
@@ -166,21 +164,10 @@ int convertEquirectangularToCubemap(const char* inputFileName, const char* outpu
     return 0;
 }
 
-int convertEquirectangularToCubemapKtx(const char* inputFileName, const char* outputFileName, int faceSize) {
-    float* rgba = nullptr;
-    int width, height;
-    {
-        const char *err = nullptr;
-        int loadExrResult = LoadEXR(&rgba, &width, &height, inputFileName, &err);
-        if (TINYEXR_SUCCESS != loadExrResult) {
-            std::cerr << "Failed to load EXR file '" << inputFileName << "' code = " << loadExrResult << std::endl;
-            if (err) {
-                std::cerr << err << std::endl;
-                FreeEXRErrorMessage(err);
-            }
-            return -1;
-        }
-    }
+int convertEquirectangularToCubemapKtx(ImageData const& image, const char* outputFileName, int faceSize) {
+    float* equiRgba = static_cast<float*>(image.data.get());
+    int width = image.width;
+    int height = image.height;
 
     ktxTexture2* texture;
     KTX_error_code result;
@@ -194,8 +181,8 @@ int convertEquirectangularToCubemapKtx(const char* inputFileName, const char* ou
         .numLevels = 1,
         .numLayers = 1,
         .numFaces = 6,
-        .isArray = KTX_FALSE,
-        .generateMipmaps = KTX_FALSE,
+        .isArray = false,
+        .generateMipmaps = false,
     };
     result = ktxTexture2_Create(
         &createInfo,
@@ -212,7 +199,7 @@ int convertEquirectangularToCubemapKtx(const char* inputFileName, const char* ou
     ktx_uint32_t level = 0;
     ktx_uint32_t layer = 0;
     for (ktx_uint32_t faceSlice = 0; faceSlice < 6; faceSlice++) {
-        equirectangularToCubemapFace(rgba, width, height, outputData.get(), faceSize, static_cast<CubemapFace>(faceSlice));
+        equirectangularToCubemapFace(equiRgba, width, height, outputData.get(), faceSize, static_cast<CubemapFace>(faceSlice));
         result = ktxTexture_SetImageFromMemory(
             ktxTexture(texture),
             level,
@@ -226,8 +213,117 @@ int convertEquirectangularToCubemapKtx(const char* inputFileName, const char* ou
             return -1;
         }
     }
-    
+
     ktxTexture_WriteToNamedFile(ktxTexture(texture), outputFileName);
     ktxTexture_Destroy(ktxTexture(texture));
     return 0;
+}
+
+// Calculate spherical harmonics from equirectangular environment map
+std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image) {
+    float* equiRgba = static_cast<float*>(image.data.get());
+    int width = image.width;
+    int height = image.height;
+
+    // 9 SH coefficients (3 bands) for each of RGB
+    std::vector<glm::vec3> shCoeffs(9, glm::vec3(0.0f));
+    
+    const float PI = 3.14159265359f;
+    const float dTheta = PI / float(height);
+    const float dPhi = 2.0f * PI / float(width);
+
+    // Loop through every pixel in the equirectangular map
+    for (int y = 0; y < height; ++y) {
+        float v = (y + 0.5f) / float(height); // [0,1]
+        float theta = v * PI; // [0, PI]
+
+        float sinTheta = std::sin(theta);
+        float cosTheta = std::cos(theta);
+
+        for (int x = 0; x < width; ++x) {
+            float u = (x + 0.5f) / float(width); // [0,1]
+            float phi = u * 2.0f * PI; // [0, 2PI]
+
+            float sinPhi = std::sin(phi);
+            float cosPhi = std::cos(phi);
+
+            // Convert spherical to Cartesian direction
+            glm::vec3 dir(
+                sinTheta * cosPhi,
+                cosTheta,
+                sinTheta * sinPhi
+            );
+
+            // Get color from equirectangular image
+            int pixelIndex = (y * width + x) * 4;
+            glm::vec3 color(
+                equiRgba[pixelIndex + 0],
+                equiRgba[pixelIndex + 1],
+                equiRgba[pixelIndex + 2]
+            );
+
+            // Solid angle of the texel
+            float dOmega = dTheta * dPhi * sinTheta;
+
+            // Evaluate SH basis functions (real, normalized)
+            float Y[9];
+            Y[0] = 0.282095f;
+            Y[1] = 0.488603f * dir.y;
+            Y[2] = 0.488603f * dir.z;
+            Y[3] = 0.488603f * dir.x;
+            Y[4] = 1.092548f * dir.x * dir.y;
+            Y[5] = 1.092548f * dir.y * dir.z;
+            Y[6] = 0.315392f * (3.0f * dir.z * dir.z - 1.0f);
+            Y[7] = 1.092548f * dir.x * dir.z;
+            Y[8] = 0.546274f * (dir.x * dir.x - dir.y * dir.y);
+
+            // Accumulate SH coefficients
+            for (int i = 0; i < 9; ++i) {
+                shCoeffs[i] += color * Y[i] * dOmega;
+            }
+        }
+    }
+
+    return shCoeffs;
+}
+
+int calculateDiffuseSphericalHarmonics(ImageData const& image, const char* outputFileName) {
+    auto shCoeffs = calculateDiffuseSphericalHarmonics(image);
+    std::ofstream outFile(outputFileName);
+    if (!outFile) {
+        std::cerr << "Error: Could not open file for writing: " << outputFileName << std::endl;
+        return -1;
+    }
+    
+    outFile << shCoeffs.size() << std::endl;
+    
+    for (const auto& coeff : shCoeffs) {
+        outFile << coeff.x << " " << coeff.y << " " << coeff.z << std::endl;
+    }
+    
+    outFile.close();
+    return 0;
+}
+
+std::vector<glm::vec3> loadSHCoeffs(const char* filename) {
+    std::ifstream inFile(filename);
+    if (!inFile) {
+        std::cerr << "Error: Could not open file for reading: " << filename << std::endl;
+        return {};
+    }
+    
+    size_t numCoeffs;
+    inFile >> numCoeffs;
+    
+    std::vector<glm::vec3> shCoeffs;
+    shCoeffs.reserve(numCoeffs);
+    
+    for (size_t i = 0; i < numCoeffs; ++i) {
+        float x, y, z;
+        inFile >> x >> y >> z;
+        shCoeffs.emplace_back(x, y, z);
+    }
+    
+    inFile.close();
+    return shCoeffs;
 }

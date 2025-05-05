@@ -50,7 +50,6 @@ foreach shader_file : shader_list
 endforeach
 
 shaders_dep = declare_dependency(sources: compiled_shaders)
-ktx_dep = dependency('ktx')
 
 ProcessEnvmap  = executable(
         'ProcessEnvmap',
@@ -61,10 +60,12 @@ ProcessEnvmap  = executable(
                 '3rdparty/tinyexr.h',
                 '3rdparty/tinyexr.cc',
                 '3rdparty/miniz.c',
+                '3rdparty/stb_image.cpp',
                 ],
         include_directories: ['3rdparty'],
         dependencies: [
-                ktx_dep,
+                dependency('ktx'),
+                dependency('glm'),
         ],
 )
 
@@ -77,10 +78,12 @@ ProcessAssets  = executable(
                 '3rdparty/tinyexr.h',
                 '3rdparty/tinyexr.cc',
                 '3rdparty/miniz.c',
+                '3rdparty/stb_image.cpp',
                 ],
         include_directories: ['3rdparty'],
         dependencies: [
-                ktx_dep,
+                dependency('ktx'),
+                dependency('glm'),
         ],
 )
 
@@ -135,7 +138,7 @@ app = executable(
                 dependency('sdl2'),
                 dependency('vulkan'),
                 dependency('glm'),
-                ktx_dep,
+                dependency('ktx'),
                 shaders_dep,
         ],
         include_directories: ['3rdparty'],

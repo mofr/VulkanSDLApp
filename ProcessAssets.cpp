@@ -20,13 +20,23 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
     int faceSize = yaml["faceSize"].as_int();
     bool saveAsKtx = yaml.contains("ktx") ? yaml["ktx"].as_bool() : false;
     const std::filesystem::path inputFileName = assetPath.string().substr(0, assetPath.string().size() - std::string(".asset.yaml").size());
+    ImageData imageData = loadImage(inputFileName);
     if (saveAsKtx) {
         std::string outputFileName = std::string(outDir / inputFileName.stem()) + ".ktx2";
-        return convertEquirectangularToCubemapKtx(inputFileName.c_str(), outputFileName.c_str(), faceSize);
+        if (convertEquirectangularToCubemapKtx(imageData, outputFileName.c_str(), faceSize) != 0) {
+            return -1;
+        }
     } else {
         std::string outputDir = outDir / inputFileName.stem();
-        return convertEquirectangularToCubemap(inputFileName.c_str(), outputDir.c_str(), faceSize);
+        if (convertEquirectangularToCubemap(imageData, outputDir.c_str(), faceSize) != 0) {
+            return -1;
+        }
     }
+    std::string diffuseShFileName = std::string(outDir / inputFileName.stem()) + ".sh";
+    if (calculateDiffuseSphericalHarmonics(imageData, diffuseShFileName.c_str()) != 0) {
+        return -1;
+    }
+    return 0;
 }
 
 int processAsset(const std::filesystem::path& assetPath, const std::string& outDir) {

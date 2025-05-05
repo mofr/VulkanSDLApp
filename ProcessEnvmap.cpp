@@ -15,5 +15,6 @@ int main(int argc, char** argv) {
 
     CLI11_PARSE(app, argc, argv);
 
-    return convertEquirectangularToCubemap(inputFilename.c_str(), outputDir.c_str(), faceSize);
+    ImageData imageData = loadImage(inputFilename);
+    return convertEquirectangularToCubemap(imageData, outputDir.c_str(), faceSize);
 }

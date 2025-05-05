@@ -132,7 +132,10 @@ In gltf texture coordinates assume the top-left corner as the origin.
 Environment cubemaps
 ====================
 
-Equirectangular panoramas are converted to cubemaps at compile time (ProcessAssets.cpp).
+In Vulkan, the textures for cubemap faces are laid out as if we're looking at the cube from the outside, but we sample them as if we're looking from the inside. That's why debug environment faces are rendered mirrored.
+
+Equirectangular panoramas are converted to cubemaps at build time (ProcessAssets.cpp). To conform the aforementioned convention (face mirroring) and avoid mirroring at runtime, processed panoramas are mirrored at build time.
+Center of equirectangular panorama is set to a default camera orientation (-Z).
 
 
 Descriptor set layouts

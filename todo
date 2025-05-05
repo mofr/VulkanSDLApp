@@ -1,10 +1,11 @@
 Rendering
-- Tonemapping
+- (IN PROGRESS) IBL: diffuse
 - Animate lights (position and color/intensity)
-- Add sun light / point light distinction
+- Add sun light / point light / spot light
 - Implement PBR
 - Implement normal mapping
-- IBL: use environment texture to handle diffuse and reflections
+- Light intensity in physical units (watts or something)
+- IBL: reflections
 - Separate the following data per frame in flight:
  - Model transform descriptors
 - Shadow maps

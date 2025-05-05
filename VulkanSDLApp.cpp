@@ -34,6 +34,8 @@
 #include "Profiler.h"
 #include "TextureLoader.h"
 #include "ColorTemperature.h"
+#include "CubemapFunctions.h"
+#include "Envmap.h"
 
 
 VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
@@ -84,6 +86,10 @@ public:
         float _padding2;
     };
 
+    struct SphericalHarmonics {
+        std::array<glm::vec4, 9> shCoefficients;
+    };
+
     FrameLevelResources(
         VkPhysicalDevice physicalDevice,
         VkDevice device,
@@ -91,7 +97,8 @@ public:
     ):
         m_device(device),
         m_viewProjection(physicalDevice, device, framesInFlight),
-        m_lightBlock(physicalDevice, device, framesInFlight)
+        m_lightBlock(physicalDevice, device, framesInFlight),
+        m_diffuseSphericalHarmonics(physicalDevice, device, framesInFlight)
     {
         m_descriptorPool = createDescriptorPool(device, framesInFlight);
         m_descriptorSetLayout = createDescriptorSetLayout(device);
@@ -111,10 +118,10 @@ public:
         std::copy_n(std::begin(lights), lightBlock.lightCount, std::begin(lightBlock.lights));
     }
 
-    void setEnvironment(int frameIndex, VkImageView imageView, VkSampler sampler) {
+    void setEnvironment(int frameIndex, Envmap const& envmap, VkSampler sampler) {
         VkDescriptorImageInfo envInfo {
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = imageView,
+            .imageView = envmap.backgroundImageView,
             .sampler = sampler,
         };
         std::array writes = {
@@ -129,6 +136,15 @@ public:
             },
         };
         vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
+
+        m_diffuseSphericalHarmonics.data()[frameIndex] = {};
+        for (size_t i = 0; i < envmap.diffuseSphericalHarmonics.size(); i++) {
+            auto const& coeffs = envmap.diffuseSphericalHarmonics[i];
+            glm::vec4& dst = m_diffuseSphericalHarmonics.data()[frameIndex].shCoefficients[i];
+            dst[0] = coeffs[0];
+            dst[1] = coeffs[1];
+            dst[2] = coeffs[2];
+        }
     }
 
 private:
@@ -165,6 +181,12 @@ private:
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             },
+            VkDescriptorSetLayoutBinding {
+                .binding = 3,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
         VkDescriptorSetLayoutCreateInfo layoutInfo{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -179,7 +201,7 @@ private:
 
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t framesInFlight) {
         std::array poolSizes = {
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=2 * framesInFlight},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=3 * framesInFlight},
             VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1 * framesInFlight},
         };
         VkDescriptorPoolCreateInfo poolInfo {
@@ -207,6 +229,7 @@ private:
         for (uint32_t i = 0; i < framesInFlight; i++) {
             VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo(i);
             VkDescriptorBufferInfo lightBlockBufferInfo = m_lightBlock.descriptorBufferInfo(i);
+            VkDescriptorBufferInfo diffuseHarmonicsBufferInfo = m_diffuseSphericalHarmonics.descriptorBufferInfo(i);
             std::array writes = {
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -226,6 +249,15 @@ private:
                     .descriptorCount = 1,
                     .pBufferInfo = &lightBlockBufferInfo,
                 },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSets[i],
+                    .dstBinding = 3,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &diffuseHarmonicsBufferInfo,
+                },
             };
             vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         }
@@ -238,7 +270,17 @@ private:
     std::vector<VkDescriptorSet> m_descriptorSets;
     UniformBuffer<ViewProjection[]> m_viewProjection;
     UniformBuffer<LightBlock[]> m_lightBlock;
+    UniformBuffer<SphericalHarmonics[]> m_diffuseSphericalHarmonics;
 };
+
+void sphericalHarmonicsGui(std::vector<glm::vec3>& shCoeffs) {
+    ImGui::Begin("Spherical Harmonics");
+    for (size_t i = 0; i < shCoeffs.size(); i++) {
+        glm::vec3& vec = shCoeffs[i];
+        ImGui::DragFloat3(std::to_string(i).c_str(), &vec[0], 0.01f);
+    }
+    ImGui::End();
+}
 
 int main() {
     PROFILE_ME;
@@ -306,36 +348,44 @@ int main() {
         vulkanContext.graphicsQueue,
         vulkanContext.commandPool
     );
-    VkImageView environmentImageView1 = textureLoader.loadKtx("build/golden_gate_hills_4k.ktx2");
-    VkImageView environmentImageView2 = textureLoader.loadKtx("build/mirrored_hall_1k.ktx2");
-    VkImageView environmentImageView3 = textureLoader.loadKtx("assets/cubemap_yokohama_rgba.ktx");
-    VkImageView environmentImageView4 = textureLoader.loadCubemap(
-        vulkanContext.physicalDevice,
-        vulkanContext.device,
-        vulkanContext.commandPool,
-        vulkanContext.graphicsQueue,
+    std::vector<Envmap> environments = {
         {
-            "assets/debug-cubemap/px.png",
-            "assets/debug-cubemap/nx.png",
-            "assets/debug-cubemap/py.png",
-            "assets/debug-cubemap/ny.png",
-            "assets/debug-cubemap/pz.png",
-            "assets/debug-cubemap/nz.png",
-        }
-    );
-
+            textureLoader.loadKtx("build/golden_gate_hills_4k.ktx2"),
+            loadSHCoeffs("build/golden_gate_hills_4k.sh"),
+        },
+        {
+            textureLoader.loadKtx("build/mirrored_hall_1k.ktx2"),
+            loadSHCoeffs("build/mirrored_hall_1k.sh"),
+        },
+        {
+            textureLoader.loadKtx("assets/cubemap_yokohama_rgba.ktx"),
+            {{0.5f, 0.5f, 1.0f}},
+        },
+        {
+            textureLoader.loadCubemap(
+                vulkanContext.physicalDevice,
+                vulkanContext.device,
+                vulkanContext.commandPool,
+                vulkanContext.graphicsQueue,
+                {
+                    "assets/debug-cubemap/px.png",
+                    "assets/debug-cubemap/nx.png",
+                    "assets/debug-cubemap/py.png",
+                    "assets/debug-cubemap/ny.png",
+                    "assets/debug-cubemap/pz.png",
+                    "assets/debug-cubemap/nz.png",
+                }
+            ),
+            {},
+        },
+    };
     std::array environmentLabels = {
         "Golden Gate Hills",
         "Mirrored Hall",
         "Yokohama",
         "Debug Cubemap",
     };
-    std::array environmentImageViews = {
-        environmentImageView1,
-        environmentImageView2,
-        environmentImageView3,
-        environmentImageView4,
-    };
+    VkSampler environmentSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, 0);
 
     std::vector<VkSurfaceFormatKHR> supportedSurfaceFormats;
     for (const auto& surfaceFormat : preferredSurfaceFormats) {
@@ -349,9 +399,6 @@ int main() {
         .environments = environmentLabels,
         .surfaceFormats = supportedSurfaceFormats,
     };
-
-    VkImageView environmentImageView = environmentImageViews[0];
-    VkSampler environmentSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, 0);
 
     CubemapBackgroundPipeline backgroundPipeline(
         vulkanContext.device,
@@ -508,8 +555,8 @@ int main() {
         RenderSurface::Frame frame = renderSurface.beginFrame();
 
         frameLevelResources.setViewProjection(frame.swapchainImageIndex, camera.getViewMatrix(), camera.getProjectionMatrix());
-        frameLevelResources.setLights(frame.swapchainImageIndex, lights);
-        frameLevelResources.setEnvironment(frame.swapchainImageIndex, environmentImageView, environmentSampler);
+        // frameLevelResources.setLights(frame.swapchainImageIndex, lights);
+        frameLevelResources.setEnvironment(frame.swapchainImageIndex, environments[config.environmentIndex], environmentSampler);
 
         backgroundPipeline.draw(
             frame.commandBuffer,
@@ -530,6 +577,7 @@ int main() {
         ImGui::NewFrame();
         RenderingConfig stagingConfig = config;
         bool configChanged = renderingConfigGui(stagingConfig, renderingConfigOptions, dt);
+        sphericalHarmonicsGui(environments[config.environmentIndex].diffuseSphericalHarmonics);
         ImGui::Render();
         ImDrawData* imguiDrawData = ImGui::GetDrawData();
         ImGui_ImplVulkan_RenderDrawData(imguiDrawData, frame.commandBuffer);
@@ -551,9 +599,6 @@ int main() {
             }
             if (config.msaaSamples != oldConfig.msaaSamples) {
                 renderSurface.setMsaaSamples(config.msaaSamples);
-            }
-            if (config.environmentIndex != oldConfig.environmentIndex) {
-                environmentImageView = environmentImageViews[config.environmentIndex];
             }
             if (config.surfaceFormat != oldConfig.surfaceFormat) {
                 renderSurface.setDisplayFormat(config.surfaceFormat);
