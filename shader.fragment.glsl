@@ -39,13 +39,7 @@ layout(set = 0, binding = 3) uniform SphericalHarmonicsUBO {
 
 vec3 reconstructIrradiance(vec3 normal) {
     // SH evaluation for 2nd order (L = 2) spherical harmonics
-    const float c0 = 0.282095;
-    const float c1 = 0.488603;
-    const float c2 = 1.092548;
-    const float c3 = 0.315392;
-    const float c4 = 0.546274;
     
-    // Constants for SH basis functions
     float x = normal.x;
     float y = normal.y;
     float z = normal.z;
@@ -54,15 +48,16 @@ vec3 reconstructIrradiance(vec3 normal) {
     float z2 = z * z;
     
     // Evaluate spherical harmonics basis functions
-    vec3 result = sh.shCoefficients[0].rgb * c0;       // L = 0, m = 0
-    result += sh.shCoefficients[1].rgb * c1 * y;       // L = 1, m = -1
-    result += sh.shCoefficients[2].rgb * c1 * z;       // L = 1, m = 0
-    result += sh.shCoefficients[3].rgb * c1 * x;       // L = 1, m = 1
-    result += sh.shCoefficients[4].rgb * c2 * (x * y); // L = 2, m = -2
-    result += sh.shCoefficients[5].rgb * c2 * (y * z); // L = 2, m = -1
-    result += sh.shCoefficients[6].rgb * c3 * (3 * z2 - 1.0); // L = 2, m = 0
-    result += sh.shCoefficients[7].rgb * c2 * (x * z); // L = 2, m = 1
-    result += sh.shCoefficients[8].rgb * c4 * (x2 - y2); // L = 2, m = 2
+    vec3 result = vec3(0);
+    result += sh.shCoefficients[0].rgb * 0.282095;                  // L = 0, m = 0
+    result += sh.shCoefficients[1].rgb * 0.488603 * y;              // L = 1, m = -1
+    result += sh.shCoefficients[2].rgb * 0.488603 * z;              // L = 1, m = 0
+    result += sh.shCoefficients[3].rgb * 0.488603 * x;              // L = 1, m = 1
+    result += sh.shCoefficients[4].rgb * 1.092548 * (x * y);        // L = 2, m = -2
+    result += sh.shCoefficients[5].rgb * 1.092548 * (y * z);        // L = 2, m = -1
+    result += sh.shCoefficients[6].rgb * 0.315392 * (3 * z2 - 1.0); // L = 2, m = 0
+    result += sh.shCoefficients[7].rgb * 1.092548 * (x * z);        // L = 2, m = 1
+    result += sh.shCoefficients[8].rgb * 1.092548 * (x2 - y2);      // L = 2, m = 2
     
     return max(result, vec3(0.0));
 }

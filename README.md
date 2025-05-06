@@ -137,6 +137,15 @@ In Vulkan, the textures for cubemap faces are laid out as if we're looking at th
 Equirectangular panoramas are converted to cubemaps at build time (ProcessAssets.cpp). To conform the aforementioned convention (face mirroring) and avoid mirroring at runtime, processed panoramas are mirrored at build time.
 Center of equirectangular panorama is set to a default camera orientation (-Z).
 
+```
+ ________________ +Y _________________
+│                                    │
+│                                    │
++Z       -X       -Z       +X       +Z
+│                                    │
+│                                    │
+│________________ -Y ________________│
+```
 
 Descriptor set layouts
 ======================

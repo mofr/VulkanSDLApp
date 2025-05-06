@@ -228,30 +228,29 @@ std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image
     // 9 SH coefficients (3 bands) for each of RGB
     std::vector<glm::vec3> shCoeffs(9, glm::vec3(0.0f));
     
-    const float PI = 3.14159265359f;
-    const float dTheta = PI / float(height);
-    const float dPhi = 2.0f * PI / float(width);
+    const float dTheta = M_PI / float(height);
+    const float dPhi = 2.0f * M_PI / float(width);
 
     // Loop through every pixel in the equirectangular map
     for (int y = 0; y < height; ++y) {
         float v = (y + 0.5f) / float(height); // [0,1]
-        float theta = v * PI; // [0, PI]
+        float theta = v * M_PI; // [0, PI]
 
         float sinTheta = std::sin(theta);
         float cosTheta = std::cos(theta);
 
         for (int x = 0; x < width; ++x) {
             float u = (x + 0.5f) / float(width); // [0,1]
-            float phi = u * 2.0f * PI; // [0, 2PI]
+            float phi = u * 2.0f * M_PI; // [0, 2PI]
 
             float sinPhi = std::sin(phi);
             float cosPhi = std::cos(phi);
 
-            // Convert spherical to Cartesian direction
+            // Convert spherical to Cartesian direction in world-space
             glm::vec3 dir(
-                sinTheta * cosPhi,
+                -sinTheta * sinPhi,
                 cosTheta,
-                sinTheta * sinPhi
+                sinTheta * cosPhi
             );
 
             // Get color from equirectangular image
@@ -266,7 +265,7 @@ std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image
             float dOmega = dTheta * dPhi * sinTheta;
 
             // Evaluate SH basis functions (real, normalized)
-            float Y[9];
+            float Y[9] = {};
             Y[0] = 0.282095f;
             Y[1] = 0.488603f * dir.y;
             Y[2] = 0.488603f * dir.z;
@@ -275,7 +274,7 @@ std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image
             Y[5] = 1.092548f * dir.y * dir.z;
             Y[6] = 0.315392f * (3.0f * dir.z * dir.z - 1.0f);
             Y[7] = 1.092548f * dir.x * dir.z;
-            Y[8] = 0.546274f * (dir.x * dir.x - dir.y * dir.y);
+            Y[8] = 1.092548f * (dir.x * dir.x - dir.y * dir.y);
 
             // Accumulate SH coefficients
             for (int i = 0; i < 9; ++i) {
