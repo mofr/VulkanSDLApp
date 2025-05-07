@@ -147,12 +147,25 @@ Center of equirectangular panorama is set to a default camera orientation (-Z).
 │________________ -Y ________________│
 ```
 
+Image-based lighting (IBL)
+==========================
+
+Spherical harmonics are calculated at build time to approximate reflected radiance for Lambertian surfaces for each particular environment.
+
+Environment map represents radiance - amount of light from a particular direction.
+
+Spherical harmonics approximate the irradiance (all incoming light).
+
+Then spherical harmonics are weighted to accomodate the convolution with Lambertian BRDF (cos(theta)).
+
 Descriptor set layouts
 ======================
 
+```
 Set 0: frame-level data
   Binding 0: UBO with View and Projection matrices
   Binding 1: UBO lights
   Binding 2: envmap + sampler
 Set 1: material data
 Set 2: per-object data
+```

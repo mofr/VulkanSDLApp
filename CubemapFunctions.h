@@ -261,7 +261,8 @@ std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image
                 equiRgba[pixelIndex + 2]
             );
 
-            // Solid angle of the texel
+            // Differential solid angle of the texel
+            // sin(θ) comes from Jacobian of spherical coordinates
             float dOmega = dTheta * dPhi * sinTheta;
 
             // Evaluate SH basis functions (real, normalized)
@@ -274,7 +275,7 @@ std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image
             Y[5] = 1.092548f * dir.y * dir.z;
             Y[6] = 0.315392f * (3.0f * dir.z * dir.z - 1.0f);
             Y[7] = 1.092548f * dir.x * dir.z;
-            Y[8] = 1.092548f * (dir.x * dir.x - dir.y * dir.y);
+            Y[8] = 0.546274f * (dir.x * dir.x - dir.y * dir.y);
 
             // Accumulate SH coefficients
             for (int i = 0; i < 9; ++i) {
@@ -282,6 +283,15 @@ std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image
             }
         }
     }
+
+    // Apply analytic convolution of Lambertian BRDF (cosθ/π) with SH basis. This transforms radiance to irradiance.
+    // These weights come from projecting cosine lobe onto SH basis functions.
+    shCoeffs[0] *= M_PI;
+    for (int i = 1; i <= 3; ++i) shCoeffs[i] *= (2.0 * M_PI) / 3.0;
+    for (int i = 4; i <= 8; ++i) shCoeffs[i] *= M_PI / 4.0;
+
+    // Convert to reflected radiance (dividing by π according to Lambertian model).
+    for (auto& c : shCoeffs) c /= M_PI;
 
     return shCoeffs;
 }

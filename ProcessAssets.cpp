@@ -32,7 +32,7 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
             return -1;
         }
     }
-    std::string diffuseShFileName = std::string(outDir / inputFileName.stem()) + ".sh";
+    std::string diffuseShFileName = std::string(outDir / inputFileName.stem()) + ".sh.txt";
     if (calculateDiffuseSphericalHarmonics(imageData, diffuseShFileName.c_str()) != 0) {
         return -1;
     }

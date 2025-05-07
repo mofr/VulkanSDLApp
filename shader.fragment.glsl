@@ -39,7 +39,7 @@ layout(set = 0, binding = 3) uniform SphericalHarmonicsUBO {
 
 vec3 reconstructIrradiance(vec3 normal) {
     // SH evaluation for 2nd order (L = 2) spherical harmonics
-    
+
     float x = normal.x;
     float y = normal.y;
     float z = normal.z;
@@ -57,7 +57,7 @@ vec3 reconstructIrradiance(vec3 normal) {
     result += sh.shCoefficients[5].rgb * 1.092548 * (y * z);        // L = 2, m = -1
     result += sh.shCoefficients[6].rgb * 0.315392 * (3 * z2 - 1.0); // L = 2, m = 0
     result += sh.shCoefficients[7].rgb * 1.092548 * (x * z);        // L = 2, m = 1
-    result += sh.shCoefficients[8].rgb * 1.092548 * (x2 - y2);      // L = 2, m = 2
+    result += sh.shCoefficients[8].rgb * 0.546274 * (x2 - y2);      // L = 2, m = 2
     
     return max(result, vec3(0.0));
 }

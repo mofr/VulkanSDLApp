@@ -351,11 +351,11 @@ int main() {
     std::vector<Envmap> environments = {
         {
             textureLoader.loadKtx("build/golden_gate_hills_4k.ktx2"),
-            loadSHCoeffs("build/golden_gate_hills_4k.sh"),
+            loadSHCoeffs("build/golden_gate_hills_4k.sh.txt"),
         },
         {
             textureLoader.loadKtx("build/mirrored_hall_1k.ktx2"),
-            loadSHCoeffs("build/mirrored_hall_1k.sh"),
+            loadSHCoeffs("build/mirrored_hall_1k.sh.txt"),
         },
         {
             textureLoader.loadKtx("assets/cubemap_yokohama_rgba.ktx"),
@@ -464,7 +464,7 @@ int main() {
         vertices.push_back({{-1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
-        Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.5f, 0.5f, 0.5f}};
+        Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.7f, 0.7f, 0.7f}};
         Model model{vertices, floorMaterial};
         MeshObject floorObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
         meshObjects.push_back(floorObj);
@@ -474,7 +474,11 @@ int main() {
         for (int j = 0; j < 4; j++) {
             static std::array specularHardness = {1.0f, 10.0f, 100.0f, 1000.0f};
             static std::array specularPower = {0.0f, 1.0f, 5.0f, 10.0f};
-            Material material {.specularHardness = specularHardness[i], .specularPower = specularPower[j]};
+            Material material {
+                .specularHardness = specularHardness[i],
+                .specularPower = specularPower[j],
+                .diffuseFactor = glm::vec3(0.7f),
+            };
             Model model {createSphereMesh(3, 0.2), material};
             MeshObject meshObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
             meshObj.position = 0.5f * (glm::vec3{i - 1.5f, j, 0}) + glm::vec3{0, 0, -2.0f};

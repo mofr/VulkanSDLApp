@@ -1,11 +1,11 @@
 Rendering
-- (IN PROGRESS) IBL: diffuse
 - Animate lights (position and color/intensity)
 - Add sun light / point light / spot light
 - Implement PBR
 - Implement normal mapping
 - Light intensity in physical units (watts or something)
 - IBL: reflections
+- Diffuse spherical harmonics: apply windowing functions (like Hanning or Hamming filters)
 - Separate the following data per frame in flight:
  - Model transform descriptors
 - Shadow maps
