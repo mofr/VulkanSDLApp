@@ -74,6 +74,7 @@ ProcessAssets  = executable(
         [
                 'ProcessAssets.cpp',
                 'CubemapFunctions.h',
+                'SunExtraction.h',
                 '3rdparty/CLI11.hpp',
                 '3rdparty/tinyexr.h',
                 '3rdparty/tinyexr.cc',

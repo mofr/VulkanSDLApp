@@ -36,6 +36,7 @@
 #include "ColorTemperature.h"
 #include "CubemapFunctions.h"
 #include "Envmap.h"
+#include "FileFunctions.h"
 
 
 VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
@@ -87,7 +88,7 @@ public:
     };
 
     struct SphericalHarmonics {
-        std::array<glm::vec4, 9> shCoefficients;
+        std::array<glm::vec4, 9> lambertianSphericalHamonics;
     };
 
     FrameLevelResources(
@@ -140,7 +141,7 @@ public:
         m_diffuseSphericalHarmonics.data()[frameIndex] = {};
         for (size_t i = 0; i < envmap.diffuseSphericalHarmonics.size(); i++) {
             auto const& coeffs = envmap.diffuseSphericalHarmonics[i];
-            glm::vec4& dst = m_diffuseSphericalHarmonics.data()[frameIndex].shCoefficients[i];
+            glm::vec4& dst = m_diffuseSphericalHarmonics.data()[frameIndex].lambertianSphericalHamonics[i];
             dst[0] = coeffs[0];
             dst[1] = coeffs[1];
             dst[2] = coeffs[2];
@@ -439,6 +440,7 @@ int main() {
         lightObj1.position = {-1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj1);
         lights.push_back(FrameLevelResources::Light{.pos=lightObj1.position, .diffuseFactor=intensity * color});
+        lights.pop_back();
     }
 
     {
@@ -452,6 +454,20 @@ int main() {
         lightObj2.position = {1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj2);
         lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor=intensity * color});
+        lights.pop_back();
+    }
+
+    {
+        auto sunYaml = loadYaml("build/golden_gate_hills_4k.sun.yaml");
+        glm::vec3 sunDir {
+            sunYaml["dir"][0].as_float(),
+            sunYaml["dir"][1].as_float(),
+            sunYaml["dir"][2].as_float(),
+        };
+
+        // TODO convert it to a sun light
+        // TODO put it closer to the Envmap
+        lights.push_back(FrameLevelResources::Light{.pos=-sunDir * 1000.0f, .diffuseFactor=glm::vec3{2.0f}});
     }
 
     {
@@ -479,7 +495,7 @@ int main() {
                 .specularPower = specularPower[j],
                 .diffuseFactor = glm::vec3(0.7f),
             };
-            Model model {createSphereMesh(3, 0.2), material};
+            Model model {createSphereMesh(4, 0.2), material};
             MeshObject meshObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
             meshObj.position = 0.5f * (glm::vec3{i - 1.5f, j, 0}) + glm::vec3{0, 0, -2.0f};
             meshObjects.push_back(meshObj);
@@ -559,7 +575,7 @@ int main() {
         RenderSurface::Frame frame = renderSurface.beginFrame();
 
         frameLevelResources.setViewProjection(frame.swapchainImageIndex, camera.getViewMatrix(), camera.getProjectionMatrix());
-        // frameLevelResources.setLights(frame.swapchainImageIndex, lights);
+        frameLevelResources.setLights(frame.swapchainImageIndex, lights);
         frameLevelResources.setEnvironment(frame.swapchainImageIndex, environments[config.environmentIndex], environmentSampler);
 
         backgroundPipeline.draw(

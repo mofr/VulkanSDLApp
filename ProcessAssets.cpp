@@ -1,24 +1,25 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include <format>
 #include <fkYAML.hpp>
+#include "FileFunctions.h"
 #include "CubemapFunctions.h"
+#include "SunExtraction.h"
 
-std::string loadFile(const char* filename) {
-    std::ifstream ifs(filename, std::ios::in | std::ios::binary | std::ios::ate);
-
-    std::ifstream::pos_type fileSize = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-
-    std::vector<char> bytes(fileSize);
-    ifs.read(bytes.data(), fileSize);
-
-    return std::string(bytes.data(), fileSize);
+void saveSunDataToFile(ExtractedSunData const& sunData, const char* fileName) {
+    std::ofstream ofs(fileName);
+    ofs << "dir: [";
+    ofs << sunData.dir.x << ", ";
+    ofs << sunData.dir.y << ", ";
+    ofs << sunData.dir.z << "]";
+    ofs << std::endl;
 }
 
 int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& yaml, const std::string& outDir) {
     int faceSize = yaml["faceSize"].as_int();
     bool saveAsKtx = yaml.contains("ktx") ? yaml["ktx"].as_bool() : false;
+    bool extractSun = yaml.contains("extractSun") ? yaml["extractSun"].as_bool() : false;
     const std::filesystem::path inputFileName = assetPath.string().substr(0, assetPath.string().size() - std::string(".asset.yaml").size());
     ImageData imageData = loadImage(inputFileName);
     if (saveAsKtx) {
@@ -32,6 +33,15 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
             return -1;
         }
     }
+    if (extractSun) {
+        ExtractedSunData sunData = extractSunFromEquirectangularPanorama(imageData);
+        if (sunData.error) {
+            std::cout << "Failed to extract sun: " << sunData.error << std::endl;
+            return -1;
+        }
+        std::string sunDataFileName = std::string(outDir / inputFileName.stem()) + ".sun.yaml";
+        saveSunDataToFile(sunData, sunDataFileName.c_str());
+    }
     std::string diffuseShFileName = std::string(outDir / inputFileName.stem()) + ".sh.txt";
     if (calculateDiffuseSphericalHarmonics(imageData, diffuseShFileName.c_str()) != 0) {
         return -1;
@@ -40,8 +50,7 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
 }
 
 int processAsset(const std::filesystem::path& assetPath, const std::string& outDir) {
-    std::string yamlContents = loadFile(assetPath.c_str());
-    auto assetYaml = fkyaml::node::deserialize(yamlContents);
+    auto assetYaml = loadYaml(assetPath.c_str());
     std::string assetType = assetYaml["type"].as_str();
 
     if (assetType == "envmap") {

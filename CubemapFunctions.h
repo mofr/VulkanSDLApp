@@ -219,6 +219,37 @@ int convertEquirectangularToCubemapKtx(ImageData const& image, const char* outpu
     return 0;
 }
 
+
+glm::vec3 worldDirFromSphericalCoordinates(float sinTheta, float cosTheta, float sinPhi, float cosPhi) {
+    return {
+        -sinTheta * sinPhi,
+        cosTheta,
+        sinTheta * cosPhi,
+    };
+}
+
+glm::vec3 worldDirFromSphericalCoordinates(float theta, float phi) {
+    return worldDirFromSphericalCoordinates(
+        std::sin(theta),
+        std::cos(theta),
+        std::sin(phi),
+        std::cos(phi)
+    );
+}
+
+glm::vec3 worldDirFromEquirectangularUV(float u, float v) {
+    // Both u and v should be in the range [0, 1]
+    float theta = v * M_PI;
+    float phi = u * 2.0f * M_PI;
+    return worldDirFromSphericalCoordinates(theta, phi);
+}
+
+glm::vec3 worldDirFromEquirectangularCoordinates(int x, int y, int width, int height) {
+    float u = (x + 0.5f) / float(width);
+    float v = (y + 0.5f) / float(height);
+    return worldDirFromEquirectangularUV(u, v);
+}
+
 // Calculate spherical harmonics from equirectangular environment map
 std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image) {
     float* equiRgba = static_cast<float*>(image.data.get());
@@ -246,12 +277,7 @@ std::vector<glm::vec3> calculateDiffuseSphericalHarmonics(ImageData const& image
             float sinPhi = std::sin(phi);
             float cosPhi = std::cos(phi);
 
-            // Convert spherical to Cartesian direction in world-space
-            glm::vec3 dir(
-                -sinTheta * sinPhi,
-                cosTheta,
-                sinTheta * cosPhi
-            );
+            glm::vec3 dir = worldDirFromSphericalCoordinates(sinTheta, cosTheta, sinPhi, cosPhi);
 
             // Get color from equirectangular image
             int pixelIndex = (y * width + x) * 4;
