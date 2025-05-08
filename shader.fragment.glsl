@@ -33,38 +33,41 @@ layout(set = 1, binding = 1) uniform MaterialProps {
 };
 
 layout(set = 0, binding = 3) uniform SphericalHarmonicsUBO {
-    // 2nd order SH needs 9 coefficients per channel
-    vec4 shCoefficients[9]; // 9 coefficients × 4 components (RGB + padding)
-} sh;
+    vec4 coeffs[9]; // vec4 = RGB + padding
+} lambertianSH;
 
-vec3 reconstructIrradiance(vec3 normal) {
+vec3 evaluateSH(vec3 dir, vec4 sh[9]) {
     // SH evaluation for 2nd order (L = 2) spherical harmonics
 
-    float x = normal.x;
-    float y = normal.y;
-    float z = normal.z;
+    float x = dir.x;
+    float y = dir.y;
+    float z = dir.z;
     float x2 = x * x;
     float y2 = y * y;
     float z2 = z * z;
     
     // Evaluate spherical harmonics basis functions
     vec3 result = vec3(0);
-    result += sh.shCoefficients[0].rgb * 0.282095;                  // L = 0, m = 0
-    result += sh.shCoefficients[1].rgb * 0.488603 * y;              // L = 1, m = -1
-    result += sh.shCoefficients[2].rgb * 0.488603 * z;              // L = 1, m = 0
-    result += sh.shCoefficients[3].rgb * 0.488603 * x;              // L = 1, m = 1
-    result += sh.shCoefficients[4].rgb * 1.092548 * (x * y);        // L = 2, m = -2
-    result += sh.shCoefficients[5].rgb * 1.092548 * (y * z);        // L = 2, m = -1
-    result += sh.shCoefficients[6].rgb * 0.315392 * (3 * z2 - 1.0); // L = 2, m = 0
-    result += sh.shCoefficients[7].rgb * 1.092548 * (x * z);        // L = 2, m = 1
-    result += sh.shCoefficients[8].rgb * 0.546274 * (x2 - y2);      // L = 2, m = 2
+    result += sh[0].rgb * 0.282095;                  // L = 0, m = 0
+    result += sh[1].rgb * 0.488603 * y;              // L = 1, m = -1
+    result += sh[2].rgb * 0.488603 * z;              // L = 1, m = 0
+    result += sh[3].rgb * 0.488603 * x;              // L = 1, m = 1
+    result += sh[4].rgb * 1.092548 * (x * y);        // L = 2, m = -2
+    result += sh[5].rgb * 1.092548 * (y * z);        // L = 2, m = -1
+    result += sh[6].rgb * 0.315392 * (3 * z2 - 1.0); // L = 2, m = 0
+    result += sh[7].rgb * 1.092548 * (x * z);        // L = 2, m = 1
+    result += sh[8].rgb * 0.546274 * (x2 - y2);      // L = 2, m = 2
     
     return max(result, vec3(0.0));
 }
 
+vec3 lambertianReflectedRadiance(vec3 normal) {
+    return evaluateSH(normal, lambertianSH.coeffs);
+}
+
 void main() {
     vec3 N = normalize(fragNormal);
-    vec3 ambient = reconstructIrradiance(N);
+    vec3 diffusedRadiance = lambertianReflectedRadiance(N);
     vec3 materialDiffuse = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
     vec3 viewDir = normalize(cameraPos - fragPosition);
 
@@ -81,6 +84,6 @@ void main() {
         irradiance += diffuseContribution + diffuseContribution * specularIntensity;
     }
 
-    irradiance += ambient;
+    irradiance += diffusedRadiance;
     outColor = vec4(materialDiffuse * irradiance + emitFactor, 1.0);
 }

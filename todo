@@ -1,4 +1,5 @@
 Rendering
+- Extract sun from envmap (direction, intensity, size)
 - Animate lights (position and color/intensity)
 - Add sun light / point light / spot light
 - Implement PBR
