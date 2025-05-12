@@ -4,10 +4,10 @@
 #include <glm/glm.hpp>
 
 struct Material {
-    std::string diffuseTexture;
+    std::string baseColorTexture;
     std::string normalTexture;
-    glm::vec3 diffuseFactor{1.0f};
-    glm::vec3 emitFactor{0.0f};
-    float specularHardness = 1.0f;
-    float specularPower = 1.0f;
+    glm::vec3 baseColorFactor {1.0f};
+    glm::vec3 emitFactor {0.0f};
+    float roughnessFactor = 1.0f;
+    float metallicFactor = 0.0f;
 };

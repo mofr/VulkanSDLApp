@@ -17,7 +17,7 @@ It requires specific vertex format: Vertex.
 Descriptor set layouts:
  Set 0: frame-level data
  Set 1: material data
-  Binding 0: diffuse texture + sampler
+  Binding 0: albedo texture + sampler
   Binding 1: UBO material props
  Set 2: per-object data
   Binding 0: UBO with Model matrix
@@ -56,12 +56,12 @@ public:
     }
 
     struct MaterialProps {
-        glm::vec3 diffuseFactor{1.0f};
+        glm::vec3 baseColorFactor {1.0f};
         float _padding1;
-        glm::vec3 emitFactor{0.0f};
+        glm::vec3 emitFactor {0.0f};
         float _padding2;
-        float specularHardness = 1.0f;
-        float specularPower = 1.0f;
+        float roughnessFactor = 1.0f;
+        float metallicFactor = 0.0f;
     };
 
     void draw(

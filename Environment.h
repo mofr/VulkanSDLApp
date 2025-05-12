@@ -5,7 +5,12 @@
 #include <glm/glm.hpp>
 #include "TextureLoader.h"
 
-struct Envmap {
+struct Environment {
+    struct Sun {
+        glm::vec3 dir;
+        glm::vec3 radiance;
+    };
     VkImageView backgroundImageView;
     std::vector<glm::vec3> diffuseSphericalHarmonics;
+    Sun sun = {};
 };

@@ -20,16 +20,21 @@ layout(set = 0, binding = 1) uniform LightBlock {
     int lightCount;
 };
 
-layout(set = 0, binding = 2) uniform samplerCube env;
+layout(set = 0, binding = 4) uniform Sun {
+    vec3 sunDir;
+    float _sunPadding1;
+    vec3 sunRadiance;
+    float _sunPadding2;
+};
 
-layout(set = 1, binding = 0) uniform sampler2D diffuseTexture;
+layout(set = 1, binding = 0) uniform sampler2D baseColorTexture;
 layout(set = 1, binding = 1) uniform MaterialProps {
-    vec3 diffuseFactor;
+    vec3 baseColorFactor;
     float _padding1;
     vec3 emitFactor;
     float _padding2;
-    float specularHardness;
-    float specularPower;
+    float roughnessFactor;
+    float metallicFactor;
 };
 
 layout(set = 0, binding = 3) uniform SphericalHarmonicsUBO {
@@ -65,25 +70,88 @@ vec3 lambertianReflectedRadiance(vec3 normal) {
     return evaluateSH(normal, lambertianSH.coeffs);
 }
 
-void main() {
-    vec3 N = normalize(fragNormal);
-    vec3 diffusedRadiance = lambertianReflectedRadiance(N);
-    vec3 materialDiffuse = vec3(texture(diffuseTexture, fragUV)) * diffuseFactor;
-    vec3 viewDir = normalize(cameraPos - fragPosition);
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
 
-    vec3 irradiance = vec3(0);
+float distributionGGX(vec3 N, vec3 H, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+
+    float denom = NdotH2 * (a2 - 1.0) + 1.0;
+    return a2 / (3.14159 * denom * denom);
+}
+
+float geometrySchlickGGX(float NdotV, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
+}
+
+void main() {
+    vec3 albedo = vec3(texture(baseColorTexture, fragUV)) * baseColorFactor;
+    float roughness = roughnessFactor;
+    float metallic = metallicFactor;
+
+    vec3 N = normalize(fragNormal);
+    vec3 V = normalize(cameraPos - fragPosition);
+    vec3 diffusedRadiance = lambertianReflectedRadiance(N);
+
+    vec3 result = vec3(0);
+
+    // PBR sun
+    if (sunRadiance.r > 0) {
+        vec3 L = -sunDir;
+        vec3 H = normalize(L + V);
+
+        // F0 reflectance
+        vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+        // Cook-Torrance BRDF
+        float NDF = distributionGGX(N, H, roughness);
+        float G = geometrySmith(N, V, L, roughness);
+        vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+        vec3 numerator = NDF * G * F;
+        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
+        vec3 specular = numerator / denominator;
+
+        // kS is energy of specular, kD is energy of diffuse
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metallic;
+
+        float NdotL = max(dot(N, L), 0.0);
+        vec3 diffuse = (albedo / 3.14159) * NdotL;
+
+        float sunSolidAngle = 6.87e-5;
+        vec3 sunIrradiance = sunRadiance * sunSolidAngle;
+
+        result += (kD * diffuse + specular) * sunIrradiance * NdotL;
+    }
+
+    result += diffusedRadiance * albedo;
+    result += emitFactor;
+
+    // Old point lights. To be replaced with PBR model.
     for (int i = 0; i < lightCount; ++i) {
         vec3 lightPos = lights[i].pos;
         vec3 lightDiffuseFactor = lights[i].diffuseFactor;
         vec3 L = normalize(lightPos - fragPosition);
-        vec3 H = normalize(L + viewDir);
+        vec3 H = normalize(L + V);
         float NdotH = dot(N, H);
         float NdotL = dot(N, L);
-        float specularIntensity = pow(max(NdotH, 0.0), specularHardness) * specularPower;
-        vec3 diffuseContribution = lightDiffuseFactor * max(NdotL, 0.0);
-        irradiance += diffuseContribution + diffuseContribution * specularIntensity;
+        // float specularIntensity = pow(max(NdotH, 0.0), specularHardness) * specularPower;
+        // vec3 diffuseContribution = lightDiffuseFactor * max(NdotL, 0.0);
     }
 
-    irradiance += diffusedRadiance;
-    outColor = vec4(materialDiffuse * irradiance + emitFactor, 1.0);
+    outColor = vec4(result, 1.0);
 }

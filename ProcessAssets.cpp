@@ -9,10 +9,18 @@
 
 void saveSunDataToFile(ExtractedSunData const& sunData, const char* fileName) {
     std::ofstream ofs(fileName);
+    ofs << std::fixed << std::setprecision(6);
+
     ofs << "dir: [";
     ofs << sunData.dir.x << ", ";
     ofs << sunData.dir.y << ", ";
     ofs << sunData.dir.z << "]";
+    ofs << std::endl;
+
+    ofs << "radiance: [";
+    ofs << sunData.radiance.r << ", ";
+    ofs << sunData.radiance.g << ", ";
+    ofs << sunData.radiance.b << "]";
     ofs << std::endl;
 }
 
@@ -22,6 +30,17 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
     bool extractSun = yaml.contains("extractSun") ? yaml["extractSun"].as_bool() : false;
     const std::filesystem::path inputFileName = assetPath.string().substr(0, assetPath.string().size() - std::string(".asset.yaml").size());
     ImageData imageData = loadImage(inputFileName);
+
+    if (extractSun) {
+        ExtractedSunData sunData = extractSunFromEquirectangularPanorama(imageData);
+        if (sunData.error) {
+            std::cout << "Failed to extract sun: " << sunData.error << std::endl;
+            return -1;
+        }
+        std::string sunDataFileName = std::string(outDir / inputFileName.stem()) + ".sun.yaml";
+        saveSunDataToFile(sunData, sunDataFileName.c_str());
+    }
+
     if (saveAsKtx) {
         std::string outputFileName = std::string(outDir / inputFileName.stem()) + ".ktx2";
         if (convertEquirectangularToCubemapKtx(imageData, outputFileName.c_str(), faceSize) != 0) {
@@ -33,15 +52,7 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
             return -1;
         }
     }
-    if (extractSun) {
-        ExtractedSunData sunData = extractSunFromEquirectangularPanorama(imageData);
-        if (sunData.error) {
-            std::cout << "Failed to extract sun: " << sunData.error << std::endl;
-            return -1;
-        }
-        std::string sunDataFileName = std::string(outDir / inputFileName.stem()) + ".sun.yaml";
-        saveSunDataToFile(sunData, sunDataFileName.c_str());
-    }
+    
     std::string diffuseShFileName = std::string(outDir / inputFileName.stem()) + ".sh.txt";
     if (calculateDiffuseSphericalHarmonics(imageData, diffuseShFileName.c_str()) != 0) {
         return -1;
@@ -69,12 +80,11 @@ int main() {
     for (auto const& dirEntry : std::filesystem::recursive_directory_iterator(assetsDir)) {
         std::filesystem::path filePath = dirEntry.path();
         if (filePath.string().ends_with(".asset.yaml")) {
-            std::cout << filePath.string();
+            std::cout << filePath.string() << std::endl;
             if (processAsset(filePath, outDir) != 0) {
                 failureCount++;
-                std::cout << " FAILED";
+                std::cout << " FAILED" << std::endl;
             }
-            std::cout << "\n";
         }
     }
     if (failureCount) {

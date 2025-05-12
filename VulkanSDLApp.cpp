@@ -35,16 +35,16 @@
 #include "TextureLoader.h"
 #include "ColorTemperature.h"
 #include "CubemapFunctions.h"
-#include "Envmap.h"
+#include "Environment.h"
 #include "FileFunctions.h"
 
 
 VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
     Pipeline::MaterialProps materialProps{
-        .diffuseFactor = material.diffuseFactor,
+        .baseColorFactor = material.baseColorFactor,
         .emitFactor = material.emitFactor,
-        .specularHardness = material.specularHardness,
-        .specularPower = material.specularPower,
+        .roughnessFactor = material.roughnessFactor,
+        .metallicFactor = material.metallicFactor,
     };
     return pipeline.createMaterial(textureImageView, sampler, materialProps);
 }
@@ -54,7 +54,7 @@ MeshObject transferModelToGpu(VulkanContext vulkanContext, float maxAnisotropy, 
     object.vertexBuffer = createVertexBuffer(vulkanContext.physicalDevice, vulkanContext.device, model.vertices);
     object.vertexCount = model.vertices.size();
     ImageData imageData;
-    if (model.material.diffuseTexture.empty()) {
+    if (model.material.baseColorTexture.empty()) {
         uint8_t * whitePixelData = (uint8_t*) malloc(4);
         whitePixelData[0] = 255;
         whitePixelData[1] = 255;
@@ -67,7 +67,7 @@ MeshObject transferModelToGpu(VulkanContext vulkanContext, float maxAnisotropy, 
         imageData.height = 1;
     }
     else {
-        imageData = loadImage(model.material.diffuseTexture);
+        imageData = loadImage(model.material.baseColorTexture);
     }
     object.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(imageData.width, imageData.height)))) + 1;
     object.textureImage = createTextureImage(vulkanContext.physicalDevice, vulkanContext.device, vulkanContext.commandPool, vulkanContext.graphicsQueue, imageData, object.mipLevels);
@@ -78,12 +78,34 @@ MeshObject transferModelToGpu(VulkanContext vulkanContext, float maxAnisotropy, 
     return object;
 }
 
+Environment::Sun loadSunFromYaml(const char* yamlFileName) {
+    auto sunYaml = loadYaml(yamlFileName);
+    glm::vec3 dir {
+        sunYaml["dir"][0].as_float(),
+        sunYaml["dir"][1].as_float(),
+        sunYaml["dir"][2].as_float(),
+    };
+    glm::vec3 radiance {
+        sunYaml["radiance"][0].as_float(),
+        sunYaml["radiance"][1].as_float(),
+        sunYaml["radiance"][2].as_float(),
+    };
+    return {dir, radiance};
+}
+
 class FrameLevelResources {
 public:
     struct Light {
         glm::vec3 pos;
         float _padding1;
         glm::vec3 diffuseFactor;
+        float _padding2;
+    };
+
+    struct SunUBO {
+        glm::vec3 dir;
+        float _padding1;
+        glm::vec3 radiance;
         float _padding2;
     };
 
@@ -99,7 +121,8 @@ public:
         m_device(device),
         m_viewProjection(physicalDevice, device, framesInFlight),
         m_lightBlock(physicalDevice, device, framesInFlight),
-        m_diffuseSphericalHarmonics(physicalDevice, device, framesInFlight)
+        m_diffuseSphericalHarmonics(physicalDevice, device, framesInFlight),
+        m_sunBuffer(physicalDevice, device, framesInFlight)
     {
         m_descriptorPool = createDescriptorPool(device, framesInFlight);
         m_descriptorSetLayout = createDescriptorSetLayout(device);
@@ -119,10 +142,10 @@ public:
         std::copy_n(std::begin(lights), lightBlock.lightCount, std::begin(lightBlock.lights));
     }
 
-    void setEnvironment(int frameIndex, Envmap const& envmap, VkSampler sampler) {
+    void setEnvironment(int frameIndex, Environment const& env, VkSampler sampler) {
         VkDescriptorImageInfo envInfo {
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = envmap.backgroundImageView,
+            .imageView = env.backgroundImageView,
             .sampler = sampler,
         };
         std::array writes = {
@@ -139,13 +162,15 @@ public:
         vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
 
         m_diffuseSphericalHarmonics.data()[frameIndex] = {};
-        for (size_t i = 0; i < envmap.diffuseSphericalHarmonics.size(); i++) {
-            auto const& coeffs = envmap.diffuseSphericalHarmonics[i];
+        for (size_t i = 0; i < env.diffuseSphericalHarmonics.size(); i++) {
+            auto const& coeffs = env.diffuseSphericalHarmonics[i];
             glm::vec4& dst = m_diffuseSphericalHarmonics.data()[frameIndex].lambertianSphericalHamonics[i];
             dst[0] = coeffs[0];
             dst[1] = coeffs[1];
             dst[2] = coeffs[2];
         }
+
+        m_sunBuffer.data()[frameIndex] = {.dir=env.sun.dir, .radiance=env.sun.radiance};
     }
 
 private:
@@ -188,6 +213,12 @@ private:
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             },
+            VkDescriptorSetLayoutBinding {
+                .binding = 4,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
         VkDescriptorSetLayoutCreateInfo layoutInfo{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -202,7 +233,7 @@ private:
 
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t framesInFlight) {
         std::array poolSizes = {
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=3 * framesInFlight},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=4 * framesInFlight},
             VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1 * framesInFlight},
         };
         VkDescriptorPoolCreateInfo poolInfo {
@@ -231,6 +262,7 @@ private:
             VkDescriptorBufferInfo viewProjectionBufferInfo = m_viewProjection.descriptorBufferInfo(i);
             VkDescriptorBufferInfo lightBlockBufferInfo = m_lightBlock.descriptorBufferInfo(i);
             VkDescriptorBufferInfo diffuseHarmonicsBufferInfo = m_diffuseSphericalHarmonics.descriptorBufferInfo(i);
+            VkDescriptorBufferInfo sunBufferInfo = m_sunBuffer.descriptorBufferInfo(i);
             std::array writes = {
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -259,6 +291,15 @@ private:
                     .descriptorCount = 1,
                     .pBufferInfo = &diffuseHarmonicsBufferInfo,
                 },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSets[i],
+                    .dstBinding = 4,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &sunBufferInfo,
+                },
             };
             vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
         }
@@ -272,6 +313,7 @@ private:
     UniformBuffer<ViewProjection[]> m_viewProjection;
     UniformBuffer<LightBlock[]> m_lightBlock;
     UniformBuffer<SphericalHarmonics[]> m_diffuseSphericalHarmonics;
+    UniformBuffer<SunUBO[]> m_sunBuffer;
 };
 
 void sphericalHarmonicsGui(std::vector<glm::vec3>& shCoeffs) {
@@ -349,10 +391,11 @@ int main() {
         vulkanContext.graphicsQueue,
         vulkanContext.commandPool
     );
-    std::vector<Envmap> environments = {
+    std::vector<Environment> environments = {
         {
             textureLoader.loadKtx("build/golden_gate_hills_4k.ktx2"),
             loadSHCoeffs("build/golden_gate_hills_4k.sh.txt"),
+            loadSunFromYaml("build/golden_gate_hills_4k.sun.yaml"),
         },
         {
             textureLoader.loadKtx("build/mirrored_hall_1k.ktx2"),
@@ -377,7 +420,10 @@ int main() {
                     "assets/debug-cubemap/nz.png",
                 }
             ),
-            {},
+            .sun={
+                .dir={-0.432382f, -0.678913f, 0.593399f},
+                .radiance={96891.0f, 98097.0f, 100099.0f},
+            },
         },
     };
     std::array environmentLabels = {
@@ -423,8 +469,7 @@ int main() {
 
     {
         Model woodenStoolModel = loadObj("assets/wooden_stool_02_4k.obj");
-        woodenStoolModel.material.specularHardness = 500;
-        woodenStoolModel.material.specularPower = 5;
+        woodenStoolModel.material.roughnessFactor = 0.35;
         MeshObject woodenStool = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, woodenStoolModel);
         meshObjects.push_back(woodenStool);
     }
@@ -434,7 +479,7 @@ int main() {
         float intensity = 0.5f;
         Model lightModel1;
         lightModel1.vertices = createSphereMesh(2, 0.03);
-        lightModel1.material.diffuseFactor = glm::vec3{0.0f};
+        lightModel1.material.baseColorFactor = glm::vec3{0.0f};
         lightModel1.material.emitFactor = 10.0f * color;
         MeshObject lightObj1 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel1);
         lightObj1.position = {-1.5f, 1.5f, 0.0f};
@@ -448,26 +493,13 @@ int main() {
         float intensity = 1.5f;
         Model lightModel2;
         lightModel2.vertices = createSphereMesh(2, 0.05);
-        lightModel2.material.diffuseFactor = glm::vec3{0.0f};
+        lightModel2.material.baseColorFactor = glm::vec3{0.0f};
         lightModel2.material.emitFactor = 10.0f * color;
         MeshObject lightObj2 = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, lightModel2);
         lightObj2.position = {1.5f, 1.5f, 0.0f};
         meshObjects.push_back(lightObj2);
         lights.push_back(FrameLevelResources::Light{.pos=lightObj2.position, .diffuseFactor=intensity * color});
         lights.pop_back();
-    }
-
-    {
-        auto sunYaml = loadYaml("build/golden_gate_hills_4k.sun.yaml");
-        glm::vec3 sunDir {
-            sunYaml["dir"][0].as_float(),
-            sunYaml["dir"][1].as_float(),
-            sunYaml["dir"][2].as_float(),
-        };
-
-        // TODO convert it to a sun light
-        // TODO put it closer to the Envmap
-        lights.push_back(FrameLevelResources::Light{.pos=-sunDir * 1000.0f, .diffuseFactor=glm::vec3{2.0f}});
     }
 
     {
@@ -480,29 +512,33 @@ int main() {
         vertices.push_back({{-1.0f, 0, -1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 1}});
         vertices.push_back({{-1.0f, 0, 1.0f}, {0, 1.0f, 0}, {1.0f, 1.0f, 1.0f}, {0, 0}});
 
-        Material floorMaterial{.specularHardness=50, .specularPower=1, .diffuseFactor = {0.7f, 0.7f, 0.7f}};
+        Material floorMaterial{
+            .baseColorFactor = {0.7f, 0.7f, 0.7f},
+            .roughnessFactor=0.35,
+        };
         Model model{vertices, floorMaterial};
         MeshObject floorObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
         meshObjects.push_back(floorObj);
     }
 
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            static std::array specularHardness = {1.0f, 10.0f, 100.0f, 1000.0f};
-            static std::array specularPower = {0.0f, 1.0f, 5.0f, 10.0f};
+    for (int x = 0; x < 4; x++) {
+        for (int y = 0; y < 4; y++) {
+            static std::array roughness = {0.1f, 0.4f, 0.5f, 1.0f};
+            static std::array metallic = {0.0f, 0.2f, 0.5f, 1.0f};
             Material material {
-                .specularHardness = specularHardness[i],
-                .specularPower = specularPower[j],
-                .diffuseFactor = glm::vec3(0.7f),
+                .baseColorFactor = glm::vec3(0.7f),
+                .roughnessFactor = roughness[x],
+                .metallicFactor = metallic[y],
             };
             Model model {createSphereMesh(4, 0.2), material};
             MeshObject meshObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
-            meshObj.position = 0.5f * (glm::vec3{i - 1.5f, j, 0}) + glm::vec3{0, 0, -2.0f};
+            meshObj.position = 0.5f * (glm::vec3{x - 1.5f, y, 0}) + glm::vec3{0, 0, -2.0f};
             meshObjects.push_back(meshObj);
         }
     }
 
     Camera camera;
+    camera.setFOV(45.0f);
     camera.setAspectRatio(float(width) / float(height));
     camera.setPosition({0.0f, 1.0f, 2.0f});
     camera.lookAt({0, 0, 0});

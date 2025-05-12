@@ -31,6 +31,10 @@ public:
         aspectRatio = newAspectRatio;
     }
 
+    void setFOV(float newFov) {
+        fov = newFov;
+    }
+
     glm::vec3 getForward() const {
         return orientation * glm::vec3(0, 0, -1);
     }

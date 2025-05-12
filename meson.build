@@ -101,6 +101,7 @@ app = executable(
                 'ObjFile.h',
                 'Material.h',
                 'Model.h',
+                'Environment.h',
                 'Camera.h',
                 'CameraController.h',
                 'OrbitCameraController.h',
