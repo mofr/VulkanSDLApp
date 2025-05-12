@@ -47,12 +47,14 @@ Model loadObj(const std::string& filePath) {
     auto& shapes = reader.GetShapes();
     auto& materials = reader.GetMaterials();
 
-    std::string albedoTexture;
+    std::string baseColorTexture;
     std::string normalTexture;
+    std::string roughnessTexture;
     if (materials.size() > 0) {
         std::filesystem::path parent = std::filesystem::path(filePath).parent_path();
-        albedoTexture = parent / materials[0].diffuse_texname;
+        baseColorTexture = parent / materials[0].diffuse_texname;
         normalTexture = parent / materials[0].normal_texname;
+        roughnessTexture = parent / materials[0].roughness_texname;
     }
 
     std::vector<Vertex> vertices;
@@ -129,5 +131,9 @@ Model loadObj(const std::string& filePath) {
         }
     }
 
-    return {vertices, {albedoTexture, normalTexture}};
+    return {vertices, {
+        .baseColorTexture = baseColorTexture,
+        .normalTexture = normalTexture,
+        .roughnessTexture = roughnessTexture,
+    }};
 }

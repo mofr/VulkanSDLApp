@@ -39,27 +39,31 @@
 #include "FileFunctions.h"
 
 
-VkDescriptorSet transferMaterialToGpu(Material const& material, Pipeline& pipeline, VkSampler sampler, VkImageView textureImageView) {
+VkDescriptorSet transferMaterialToGpu(
+    Material const& material,
+    Pipeline& pipeline,
+    VkImageView baseColorImageView,
+    VkSampler baseColorSampler,
+    VkImageView roughnessImageView,
+    VkSampler roughnessSampler
+) {
     Pipeline::MaterialProps materialProps{
         .baseColorFactor = material.baseColorFactor,
         .emitFactor = material.emitFactor,
         .roughnessFactor = material.roughnessFactor,
         .metallicFactor = material.metallicFactor,
     };
-    return pipeline.createMaterial(textureImageView, sampler, materialProps);
+    return pipeline.createMaterial(baseColorImageView, baseColorSampler, roughnessImageView, roughnessSampler, materialProps);
 }
 
-MeshObject transferModelToGpu(VulkanContext vulkanContext, float maxAnisotropy, Pipeline& pipeline, const Model& model) {
-    MeshObject object{};
-    object.vertexBuffer = createVertexBuffer(vulkanContext.physicalDevice, vulkanContext.device, model.vertices);
-    object.vertexCount = model.vertices.size();
+ImageData loadTextureOrDefault(std::string const& fileName, glm::vec4 defaultValue) {
     ImageData imageData;
-    if (model.material.baseColorTexture.empty()) {
+    if (fileName.empty()) {
         uint8_t * whitePixelData = (uint8_t*) malloc(4);
-        whitePixelData[0] = 255;
-        whitePixelData[1] = 255;
-        whitePixelData[2] = 255;
-        whitePixelData[3] = 255;
+        whitePixelData[0] = 255 * defaultValue[0];
+        whitePixelData[1] = 255 * defaultValue[1];
+        whitePixelData[2] = 255 * defaultValue[2];
+        whitePixelData[3] = 255 * defaultValue[3];
         imageData.data.reset((void*) whitePixelData);
         imageData.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
         imageData.dataSize = 4;
@@ -67,14 +71,37 @@ MeshObject transferModelToGpu(VulkanContext vulkanContext, float maxAnisotropy, 
         imageData.height = 1;
     }
     else {
-        imageData = loadImage(model.material.baseColorTexture);
+        imageData = loadImage(fileName);
     }
-    object.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(imageData.width, imageData.height)))) + 1;
-    object.textureImage = createTextureImage(vulkanContext.physicalDevice, vulkanContext.device, vulkanContext.commandPool, vulkanContext.graphicsQueue, imageData, object.mipLevels);
-    object.textureImageView = createImageView(vulkanContext.device, object.textureImage, VK_FORMAT_R8G8B8A8_SRGB, object.mipLevels);
+    return imageData;
+}
+
+MeshObject transferModelToGpu(VulkanContext vulkanContext, float maxAnisotropy, Pipeline& pipeline, const Model& model) {
+    MeshObject object{};
+    object.vertexBuffer = createVertexBuffer(vulkanContext.physicalDevice, vulkanContext.device, model.vertices);
+    object.vertexCount = model.vertices.size();
+
+    ImageData baseColorImageData = loadTextureOrDefault(model.material.baseColorTexture, glm::vec4 {1.0f});
+    object.baseColorMipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(baseColorImageData.width, baseColorImageData.height)))) + 1;
+    object.baseColorImage = createTextureImage(vulkanContext.physicalDevice, vulkanContext.device, vulkanContext.commandPool, vulkanContext.graphicsQueue, baseColorImageData, object.baseColorMipLevels);
+    object.baseColorImageView = createImageView(vulkanContext.device, object.baseColorImage, baseColorImageData.imageFormat, object.baseColorMipLevels);
+    object.baseColorSampler = createTextureSampler(vulkanContext.device, maxAnisotropy, object.baseColorMipLevels);
+
+    ImageData roughnessImageData = loadTextureOrDefault(model.material.roughnessTexture, glm::vec4 {1.0f});
+    object.roughnessMipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(roughnessImageData.width, roughnessImageData.height)))) + 1;
+    object.roughnessImage = createTextureImage(vulkanContext.physicalDevice, vulkanContext.device, vulkanContext.commandPool, vulkanContext.graphicsQueue, roughnessImageData, object.roughnessMipLevels);
+    object.roughnessImageView = createImageView(vulkanContext.device, object.roughnessImage, roughnessImageData.imageFormat, object.roughnessMipLevels);
+    object.roughnessSampler = createTextureSampler(vulkanContext.device, maxAnisotropy, object.roughnessMipLevels);
+    
     object.material = model.material;
-    object.textureSampler = createTextureSampler(vulkanContext.device, maxAnisotropy, object.mipLevels);
-    object.materialDescriptorSet = transferMaterialToGpu(model.material, pipeline, object.textureSampler, object.textureImageView);
+    object.materialDescriptorSet = transferMaterialToGpu(
+        model.material,
+        pipeline,
+        object.baseColorImageView,
+        object.baseColorSampler,
+        object.roughnessImageView,
+        object.roughnessSampler
+    );
     return object;
 }
 
@@ -469,7 +496,6 @@ int main() {
 
     {
         Model woodenStoolModel = loadObj("assets/wooden_stool_02_4k.obj");
-        woodenStoolModel.material.roughnessFactor = 0.35;
         MeshObject woodenStool = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, woodenStoolModel);
         meshObjects.push_back(woodenStool);
     }
@@ -646,8 +672,16 @@ int main() {
             config = stagingConfig;
             if (config.maxAnisotropy != oldConfig.maxAnisotropy || config.useMipMaps != oldConfig.useMipMaps) {
                 for (auto& obj : meshObjects) {
-                    obj.textureSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, config.useMipMaps ? obj.mipLevels : 0);
-                    obj.materialDescriptorSet = transferMaterialToGpu(obj.material, pipeline, obj.textureSampler, obj.textureImageView);
+                    obj.baseColorSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, config.useMipMaps ? obj.baseColorMipLevels : 0);
+                    obj.roughnessSampler = createTextureSampler(vulkanContext.device, config.maxAnisotropy, config.useMipMaps ? obj.roughnessMipLevels : 0);
+                    obj.materialDescriptorSet = transferMaterialToGpu(
+                        obj.material,
+                        pipeline,
+                        obj.baseColorImageView,
+                        obj.baseColorSampler,
+                        obj.roughnessImageView,
+                        obj.roughnessSampler
+                    );
                 }
             }
             if (config.vsyncEnabled != oldConfig.vsyncEnabled) {

@@ -9,5 +9,5 @@ Ni 1.450000
 d 1.000000
 illum 2
 map_Kd wooden_stool_02_diff_4k.jpg
-map_Ns wooden_stool_02_rough_4k.exr
+map_Pr wooden_stool_02_rough_4k.exr
 map_Bump -bm 1.000000 wooden_stool_02_nor_gl_4k.exr

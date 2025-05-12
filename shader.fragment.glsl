@@ -28,7 +28,8 @@ layout(set = 0, binding = 4) uniform Sun {
 };
 
 layout(set = 1, binding = 0) uniform sampler2D baseColorTexture;
-layout(set = 1, binding = 1) uniform MaterialProps {
+layout(set = 1, binding = 1) uniform sampler2D roughnessTexture;
+layout(set = 1, binding = 2) uniform MaterialProps {
     vec3 baseColorFactor;
     float _padding1;
     vec3 emitFactor;
@@ -97,8 +98,8 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 }
 
 void main() {
-    vec3 albedo = vec3(texture(baseColorTexture, fragUV)) * baseColorFactor;
-    float roughness = roughnessFactor;
+    vec3 albedo = texture(baseColorTexture, fragUV).rgb * baseColorFactor;
+    float roughness = texture(roughnessTexture, fragUV).r * roughnessFactor;
     float metallic = metallicFactor;
 
     vec3 N = normalize(fragNormal);

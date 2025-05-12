@@ -17,8 +17,9 @@ It requires specific vertex format: Vertex.
 Descriptor set layouts:
  Set 0: frame-level data
  Set 1: material data
-  Binding 0: albedo texture + sampler
-  Binding 1: UBO material props
+  Binding 0: base color texture + sampler
+  Binding 1: roughness texture + sampler
+  Binding 2: UBO material props
  Set 2: per-object data
   Binding 0: UBO with Model matrix
 */
@@ -89,16 +90,27 @@ public:
         }
     }
 
-    VkDescriptorSet createMaterial(VkImageView textureImageView, VkSampler textureSampler, MaterialProps const& props) {
+    VkDescriptorSet createMaterial(
+        VkImageView baseColorImageView,
+        VkSampler baseColorSampler,
+        VkImageView roughnessImageView,
+        VkSampler roughnessSampler,
+        MaterialProps const& props
+    ) {
         // TODO need a proper Material object to handle the lifetime
         auto propsBuffer = new UniformBuffer<MaterialProps>(m_physicalDevice, m_device);
         propsBuffer->data() = props;
         VkDescriptorSet materialDescriptorSet = createMaterialDescriptorSet();
         {
-            VkDescriptorImageInfo imageInfo {
+            VkDescriptorImageInfo baseColorImageInfo {
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                .imageView = textureImageView,
-                .sampler = textureSampler,
+                .imageView = baseColorImageView,
+                .sampler = baseColorSampler,
+            };
+            VkDescriptorImageInfo roughnessImageInfo {
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = roughnessImageView,
+                .sampler = roughnessSampler,
             };
             VkDescriptorBufferInfo materialPropsBufferInfo = propsBuffer->descriptorBufferInfo();
             std::array writes = {
@@ -109,12 +121,21 @@ public:
                     .dstArrayElement = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     .descriptorCount = 1,
-                    .pImageInfo = &imageInfo,
+                    .pImageInfo = &baseColorImageInfo,
                 },
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                     .dstSet = materialDescriptorSet,
                     .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .pImageInfo = &roughnessImageInfo,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = materialDescriptorSet,
+                    .dstBinding = 2,
                     .dstArrayElement = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     .descriptorCount = 1,
@@ -192,20 +213,28 @@ private:
     }
 
     static VkDescriptorSetLayout createDescriptorSetLayoutMaterial(VkDevice device) {
-        VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-        samplerLayoutBinding.binding = 0;
-        samplerLayoutBinding.descriptorCount = 1;
-        samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerLayoutBinding.pImmutableSamplers = nullptr;
-        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        VkDescriptorSetLayoutBinding materialPropsBinding{};
-        materialPropsBinding.binding = 1;
-        materialPropsBinding.descriptorCount = 1;
-        materialPropsBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        materialPropsBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        std::array bindings = {samplerLayoutBinding, materialPropsBinding};
+        std::array bindings = {
+            VkDescriptorSetLayoutBinding {
+                .binding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImmutableSamplers = nullptr,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            VkDescriptorSetLayoutBinding {
+                .binding = 1,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImmutableSamplers = nullptr,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            VkDescriptorSetLayoutBinding {
+                .binding = 2,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+        };
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = bindings.size();
@@ -219,7 +248,7 @@ private:
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t poolSize) {
         std::array poolSizes = {
             VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=poolSize + poolSize + 2},
-            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=poolSize},
+            VkDescriptorPoolSize{.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=poolSize * 2},
         };
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
