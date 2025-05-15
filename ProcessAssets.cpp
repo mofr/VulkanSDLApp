@@ -22,6 +22,8 @@ void saveSunDataToFile(ExtractedSunData const& sunData, const char* fileName) {
     ofs << sunData.radiance.g << ", ";
     ofs << sunData.radiance.b << "]";
     ofs << std::endl;
+
+    ofs << "solidAngle: " << sunData.solidAngle;
 }
 
 int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& yaml, const std::string& outDir) {
@@ -30,16 +32,6 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
     bool extractSun = yaml.contains("extractSun") ? yaml["extractSun"].as_bool() : false;
     const std::filesystem::path inputFileName = assetPath.string().substr(0, assetPath.string().size() - std::string(".asset.yaml").size());
     ImageData imageData = loadImage(inputFileName);
-
-    if (extractSun) {
-        ExtractedSunData sunData = extractSunFromEquirectangularPanorama(imageData);
-        if (sunData.error) {
-            std::cout << "Failed to extract sun: " << sunData.error << std::endl;
-            return -1;
-        }
-        std::string sunDataFileName = std::string(outDir / inputFileName.stem()) + ".sun.yaml";
-        saveSunDataToFile(sunData, sunDataFileName.c_str());
-    }
 
     if (saveAsKtx) {
         std::string outputFileName = std::string(outDir / inputFileName.stem()) + ".ktx2";
@@ -52,7 +44,18 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
             return -1;
         }
     }
-    
+
+    if (extractSun) {
+        float sunSolidAngle = yaml["sunSolidAngle"].as_float();
+        ExtractedSunData sunData = extractSunFromEquirectangularPanorama(imageData, sunSolidAngle);
+        if (sunData.error) {
+            std::cout << "Failed to extract sun: " << sunData.error << std::endl;
+            return -1;
+        }
+        std::string sunDataFileName = std::string(outDir / inputFileName.stem()) + ".sun.yaml";
+        saveSunDataToFile(sunData, sunDataFileName.c_str());
+    }
+
     std::string diffuseShFileName = std::string(outDir / inputFileName.stem()) + ".sh.txt";
     if (calculateDiffuseSphericalHarmonics(imageData, diffuseShFileName.c_str()) != 0) {
         return -1;

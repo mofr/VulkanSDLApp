@@ -1,12 +1,12 @@
 Rendering
-- (IN PROGRESS) Extract sun from envmap (direction, intensity, size)
 - (IN PROGRESS) Implement PBR
  - Implement normal mapping
  - IBL reflections
- - Light intensity in physical units (watts or something)
 - Fix sphere mesh generation - it's not perfectly spherical
 - Animate lights (position and color/intensity)
-- Add point light / spot light
+- Point light
+- Spot light
+- Area light
 - Bloom
 - Make normals smoothing optional
 - Diffuse spherical harmonics: apply windowing functions (like Hanning or Hamming filters)

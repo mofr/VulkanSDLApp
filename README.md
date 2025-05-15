@@ -158,6 +158,11 @@ Spherical harmonics approximate the irradiance (all incoming light).
 
 Then spherical harmonics are weighted to accomodate the convolution with Lambertian BRDF (cos(theta)).
 
+Sun
+---
+
+Sun radiance is automatically extracted from the environment map before spherical harmonics calculation.
+
 Descriptor set layouts
 ======================
 

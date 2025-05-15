@@ -9,6 +9,7 @@ struct Environment {
     struct Sun {
         glm::vec3 dir;
         glm::vec3 radiance;
+        float solidAngle;
     };
     VkImageView backgroundImageView;
     std::vector<glm::vec3> diffuseSphericalHarmonics;

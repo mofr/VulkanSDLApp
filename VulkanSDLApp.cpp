@@ -117,7 +117,8 @@ Environment::Sun loadSunFromYaml(const char* yamlFileName) {
         sunYaml["radiance"][1].as_float(),
         sunYaml["radiance"][2].as_float(),
     };
-    return {dir, radiance};
+    float solidAngle = sunYaml["solidAngle"].as_float();
+    return {dir, radiance, solidAngle};
 }
 
 class FrameLevelResources {
@@ -134,6 +135,8 @@ public:
         float _padding1;
         glm::vec3 radiance;
         float _padding2;
+        float solidAngle;
+        glm::vec3 _padding3;
     };
 
     struct SphericalHarmonics {
@@ -197,7 +200,11 @@ public:
             dst[2] = coeffs[2];
         }
 
-        m_sunBuffer.data()[frameIndex] = {.dir=env.sun.dir, .radiance=env.sun.radiance};
+        m_sunBuffer.data()[frameIndex] = {
+            .dir=env.sun.dir,
+            .radiance=env.sun.radiance,
+            .solidAngle=env.sun.solidAngle,
+        };
     }
 
 private:

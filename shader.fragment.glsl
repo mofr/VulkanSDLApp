@@ -25,6 +25,8 @@ layout(set = 0, binding = 4) uniform Sun {
     float _sunPadding1;
     vec3 sunRadiance;
     float _sunPadding2;
+    float sunSolidAngle;
+    vec3 _sunPadding3;
 };
 
 layout(set = 1, binding = 0) uniform sampler2D baseColorTexture;
@@ -133,7 +135,6 @@ void main() {
         float NdotL = max(dot(N, L), 0.0);
         vec3 diffuse = (albedo / 3.14159) * NdotL;
 
-        float sunSolidAngle = 6.87e-5;
         vec3 sunIrradiance = sunRadiance * sunSolidAngle;
 
         result += (kD * diffuse + specular) * sunIrradiance * NdotL;
