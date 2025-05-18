@@ -33,6 +33,17 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
     const std::filesystem::path inputFileName = assetPath.string().substr(0, assetPath.string().size() - std::string(".asset.yaml").size());
     ImageData imageData = loadImage(inputFileName);
 
+    if (extractSun) {
+        float sunSolidAngle = yaml["sunSolidAngle"].as_float();
+        ExtractedSunData sunData = extractSunFromEquirectangularPanorama(imageData, sunSolidAngle);
+        if (sunData.error) {
+            std::cout << "Failed to extract sun: " << sunData.error << std::endl;
+            return -1;
+        }
+        std::string sunDataFileName = std::string(outDir / inputFileName.stem()) + ".sun.yaml";
+        saveSunDataToFile(sunData, sunDataFileName.c_str());
+    }
+
     if (saveAsKtx) {
         std::string outputFileName = std::string(outDir / inputFileName.stem()) + ".ktx2";
         if (convertEquirectangularToCubemapKtx(imageData, outputFileName.c_str(), faceSize) != 0) {
@@ -43,17 +54,6 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
         if (convertEquirectangularToCubemap(imageData, outputDir.c_str(), faceSize) != 0) {
             return -1;
         }
-    }
-
-    if (extractSun) {
-        float sunSolidAngle = yaml["sunSolidAngle"].as_float();
-        ExtractedSunData sunData = extractSunFromEquirectangularPanorama(imageData, sunSolidAngle);
-        if (sunData.error) {
-            std::cout << "Failed to extract sun: " << sunData.error << std::endl;
-            return -1;
-        }
-        std::string sunDataFileName = std::string(outDir / inputFileName.stem()) + ".sun.yaml";
-        saveSunDataToFile(sunData, sunDataFileName.c_str());
     }
 
     std::string diffuseShFileName = std::string(outDir / inputFileName.stem()) + ".sh.txt";

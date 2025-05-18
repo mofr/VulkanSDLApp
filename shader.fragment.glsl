@@ -19,6 +19,7 @@ layout(set = 0, binding = 1) uniform LightBlock {
     Light lights[8];
     int lightCount;
 };
+layout(set = 0, binding = 2) uniform samplerCube env;
 
 layout(set = 0, binding = 4) uniform Sun {
     vec3 sunDir;
@@ -77,6 +78,10 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
 float distributionGGX(vec3 N, vec3 H, float roughness) {
     float a = roughness * roughness;
     float a2 = a * a;
@@ -104,56 +109,58 @@ void main() {
     float roughness = texture(roughnessTexture, fragUV).r * roughnessFactor;
     float metallic = metallicFactor;
 
+    vec3 F0 = mix(vec3(0.04), albedo, metallic); // F0 reflectance
+
     vec3 N = normalize(fragNormal);
     vec3 V = normalize(cameraPos - fragPosition);
-    vec3 diffusedRadiance = lambertianReflectedRadiance(N);
+    float NdotV = max(dot(N, V), 0.0);
+    vec3 R = reflect(-V, N);
 
     vec3 result = vec3(0);
 
-    // PBR sun
+    // Direct sun light
     if (sunRadiance.r > 0) {
         vec3 L = -sunDir;
         vec3 H = normalize(L + V);
-
-        // F0 reflectance
-        vec3 F0 = mix(vec3(0.04), albedo, metallic);
+        float NdotL = max(dot(N, L), 0.0);
+        float HdotV = max(dot(H, V), 0.0);
 
         // Cook-Torrance BRDF
         float NDF = distributionGGX(N, H, roughness);
         float G = geometrySmith(N, V, L, roughness);
-        vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+        vec3 F = fresnelSchlick(HdotV, F0);
 
-        vec3 numerator = NDF * G * F;
-        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
-        vec3 specular = numerator / denominator;
+        // Specular component
+        vec3 specular = NDF * G * F / (4.0 * NdotV * NdotL + 0.001);
 
-        // kS is energy of specular, kD is energy of diffuse
-        vec3 kS = F;
-        vec3 kD = vec3(1.0) - kS;
-        kD *= 1.0 - metallic;
+        // Diffuse component
+        vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+        vec3 diffuse = kD * (albedo / 3.14159) * NdotL;
 
-        float NdotL = max(dot(N, L), 0.0);
-        vec3 diffuse = (albedo / 3.14159) * NdotL;
-
+        // Combine with light
         vec3 sunIrradiance = sunRadiance * sunSolidAngle;
-
-        result += (kD * diffuse + specular) * sunIrradiance * NdotL;
+        result += (diffuse + specular) * sunIrradiance * NdotL;
     }
 
-    result += diffusedRadiance * albedo;
+    // Ambient
+    {
+        // Split diffuse and specular components based on fresnel factor
+        vec3 ambient_kS = fresnelSchlickRoughness(NdotV, F0, roughness);
+        vec3 ambient_kD = (1.0 - ambient_kS) * (1.0 - metallic);
+
+        // Diffuse component
+        vec3 diffusedRadiance = lambertianReflectedRadiance(N);
+        result += ambient_kD * diffusedRadiance * albedo;
+
+        // Specular component
+        vec3 prefilteredColor = texture(env, R).rgb; // No LOD yet
+        // Temporarily use fake BRDF
+        vec2 fakeBRDF = vec2(1.0 - roughness, roughness); // Acts like full F0, no bias
+        vec3 specularIBL = prefilteredColor * (F0 * fakeBRDF.x + fakeBRDF.y);
+        result += ambient_kS * specularIBL;
+    }
+
     result += emitFactor;
-
-    // Old point lights. To be replaced with PBR model.
-    for (int i = 0; i < lightCount; ++i) {
-        vec3 lightPos = lights[i].pos;
-        vec3 lightDiffuseFactor = lights[i].diffuseFactor;
-        vec3 L = normalize(lightPos - fragPosition);
-        vec3 H = normalize(L + V);
-        float NdotH = dot(N, H);
-        float NdotL = dot(N, L);
-        // float specularIntensity = pow(max(NdotH, 0.0), specularHardness) * specularPower;
-        // vec3 diffuseContribution = lightDiffuseFactor * max(NdotL, 0.0);
-    }
 
     outColor = vec4(result, 1.0);
 }

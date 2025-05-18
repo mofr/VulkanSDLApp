@@ -557,7 +557,7 @@ int main() {
     for (int x = 0; x < 4; x++) {
         for (int y = 0; y < 4; y++) {
             static std::array roughness = {0.1f, 0.4f, 0.5f, 1.0f};
-            static std::array metallic = {0.0f, 0.2f, 0.5f, 1.0f};
+            static std::array metallic = {0.0f, 0.35f, 0.65f, 1.0f};
             Material material {
                 .baseColorFactor = glm::vec3(0.7f),
                 .roughnessFactor = roughness[x],
