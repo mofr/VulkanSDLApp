@@ -40,14 +40,13 @@ std::vector<Vertex> createSphereMesh(int subdivide = 0, float radius = 1.0f) {
     triangleVertices.reserve(finalVertexCount);
     int triangleCount = 20;
     for (int subdivIteration = 0; subdivIteration < subdivide; ++subdivIteration) {
-        float k = 1.0f / glm::length(triangleVertices[0] + triangleVertices[1]);
         for (int i = 0; i < triangleCount; ++i) {
             glm::vec3 v0 = triangleVertices[i * 3];
             glm::vec3 v1 = triangleVertices[i * 3 + 1];
             glm::vec3 v2 = triangleVertices[i * 3 + 2];
-            glm::vec3 v3 = (v0 + v1) * k;
-            glm::vec3 v4 = (v1 + v2) * k;
-            glm::vec3 v5 = (v2 + v0) * k;
+            glm::vec3 v3 = glm::normalize(v0 + v1);
+            glm::vec3 v4 = glm::normalize(v1 + v2);
+            glm::vec3 v5 = glm::normalize(v2 + v0);
             triangleVertices[i * 3] = v3;
             triangleVertices[i * 3 + 1] = v4;
             triangleVertices[i * 3 + 2] = v5;

@@ -1,8 +1,7 @@
 Rendering
 - (IN PROGRESS) Implement PBR
+ - (IN PROGRESS) IBL specular reflections
  - Implement normal mapping
- - IBL reflections
-- Fix sphere mesh generation - it's not perfectly spherical
 - Animate lights (position and color/intensity)
 - Point light
 - Spot light
