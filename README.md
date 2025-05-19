@@ -171,6 +171,9 @@ Set 0: frame-level data
   Binding 0: UBO with View and Projection matrices
   Binding 1: UBO lights
   Binding 2: envmap + sampler
+  Binding 3: UBO env diffuse harmonics
+  Binding 4: UBO sun
+  Binding 5: BRDF LUT for specular IBL
 Set 1: material data
 Set 2: per-object data
 ```

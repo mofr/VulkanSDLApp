@@ -1,0 +1,3 @@
+type: brdfLut
+size: 512
+numSamples: 1024

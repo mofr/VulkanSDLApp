@@ -16,6 +16,8 @@ Rendering
  - Requires separate pipeline so need to extract non-pipeline code from Pipeline class
 - Particle systems (cpu/gpu compute)
 - Reverse depth buffer
+- Mesh animations
+- Fog
 
 Organizational
 - Reduce main function size

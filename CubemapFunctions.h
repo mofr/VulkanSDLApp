@@ -194,7 +194,7 @@ int convertEquirectangularToCubemapKtx(ImageData const& image, const char* outpu
         return -1;
     }
     
-    ktx_size_t srcSize = 4 * 4 * faceSize * faceSize;
+    ktx_size_t srcSizeInBytes = 4 * 4 * faceSize * faceSize;
     auto outputData = std::make_unique<float[]>(4 * faceSize * faceSize);
     ktx_uint32_t level = 0;
     ktx_uint32_t layer = 0;
@@ -206,7 +206,7 @@ int convertEquirectangularToCubemapKtx(ImageData const& image, const char* outpu
             layer,
             faceSlice,
             (ktx_uint8_t*)outputData.get(),
-            srcSize
+            srcSizeInBytes
         );
         if (result != KTX_SUCCESS) {
             std::cerr << ktxErrorString(result) << std::endl;
@@ -218,7 +218,6 @@ int convertEquirectangularToCubemapKtx(ImageData const& image, const char* outpu
     ktxTexture_Destroy(ktxTexture(texture));
     return 0;
 }
-
 
 glm::vec3 worldDirFromSphericalCoordinates(float sinTheta, float cosTheta, float sinPhi, float cosPhi) {
     return {

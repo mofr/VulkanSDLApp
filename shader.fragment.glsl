@@ -20,7 +20,6 @@ layout(set = 0, binding = 1) uniform LightBlock {
     int lightCount;
 };
 layout(set = 0, binding = 2) uniform samplerCube env;
-
 layout(set = 0, binding = 4) uniform Sun {
     vec3 sunDir;
     float _sunPadding1;
@@ -29,6 +28,7 @@ layout(set = 0, binding = 4) uniform Sun {
     float sunSolidAngle;
     vec3 _sunPadding3;
 };
+layout(set = 0, binding = 5) uniform sampler2D brdfLut;
 
 layout(set = 1, binding = 0) uniform sampler2D baseColorTexture;
 layout(set = 1, binding = 1) uniform sampler2D roughnessTexture;
@@ -154,9 +154,8 @@ void main() {
 
         // Specular component
         vec3 prefilteredColor = texture(env, R).rgb; // No LOD yet
-        // Temporarily use fake BRDF
-        vec2 fakeBRDF = vec2(1.0 - roughness, roughness); // Acts like full F0, no bias
-        vec3 specularIBL = prefilteredColor * (F0 * fakeBRDF.x + fakeBRDF.y);
+        vec2 brdf = texture(brdfLut, vec2(NdotV, roughness)).rg;
+        vec3 specularIBL = prefilteredColor * (F0 * brdf.x + brdf.y);
         result += ambient_kS * specularIBL;
     }
 

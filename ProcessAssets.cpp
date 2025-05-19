@@ -6,6 +6,7 @@
 #include "FileFunctions.h"
 #include "CubemapFunctions.h"
 #include "SunExtraction.h"
+#include "BRDF.h"
 
 void saveSunDataToFile(ExtractedSunData const& sunData, const char* fileName) {
     std::ofstream ofs(fileName);
@@ -63,16 +64,25 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
     return 0;
 }
 
+int processBrdfLut(
+    [[maybe_unused]] const std::filesystem::path& assetPath,
+    fkyaml::node const& yaml,
+    const std::string& outDir
+) {
+    uint32_t size = yaml["size"].as_int();
+    uint32_t numSamples = yaml["numSamples"].as_int();
+    return generateBRDFLookupTableToFile(size, numSamples, (outDir + "/brdf.ktx2").c_str());
+}
+
 int processAsset(const std::filesystem::path& assetPath, const std::string& outDir) {
     auto assetYaml = loadYaml(assetPath.c_str());
     std::string assetType = assetYaml["type"].as_str();
 
-    if (assetType == "envmap") {
-        return processEnvmap(assetPath, assetYaml, outDir);
-    } else {
-        std::cout << "Unknown asset type: " << assetType << std::endl;
-        return -1;
-    }
+    if (assetType == "envmap") return processEnvmap(assetPath, assetYaml, outDir);
+    if (assetType == "brdfLut") return processBrdfLut(assetPath, assetYaml, outDir);
+
+    std::cout << "Unknown asset type: " << assetType << std::endl;
+    return -1;
 }
 
 int main() {
