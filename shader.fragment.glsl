@@ -105,11 +105,12 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 }
 
 void main() {
-    vec3 albedo = texture(baseColorTexture, fragUV).rgb * baseColorFactor;
+    vec3 baseColor = texture(baseColorTexture, fragUV).rgb * baseColorFactor;
     float roughness = texture(roughnessTexture, fragUV).r * roughnessFactor;
     float metallic = metallicFactor;
 
-    vec3 F0 = mix(vec3(0.04), albedo, metallic); // F0 reflectance
+    vec3 F0 = mix(vec3(0.04), baseColor, metallic);
+    vec3 albedo = baseColor * (1.0 - metallic);
 
     vec3 N = normalize(fragNormal);
     vec3 V = normalize(cameraPos - fragPosition);
@@ -134,7 +135,7 @@ void main() {
         vec3 specular = NDF * G * F / (4.0 * NdotV * NdotL + 0.001);
 
         // Diffuse component
-        vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+        vec3 kD = 1.0 - F;
         vec3 diffuse = kD * (albedo / 3.14159) * NdotL;
 
         // Combine with light
@@ -146,7 +147,7 @@ void main() {
     {
         // Split diffuse and specular components based on fresnel factor
         vec3 ambient_kS = fresnelSchlickRoughness(NdotV, F0, roughness);
-        vec3 ambient_kD = (1.0 - ambient_kS) * (1.0 - metallic);
+        vec3 ambient_kD = 1.0 - ambient_kS;
 
         // Diffuse component
         vec3 diffusedRadiance = lambertianReflectedRadiance(N);
