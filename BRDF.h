@@ -110,7 +110,7 @@ std::pair<float, float> integrateBRDF(float NdotV, float roughness, uint32_t num
 }
 
 /**
- * Generates a BRDF Lookup Table (LUT) for PBR rendering.
+ * Generates a DFG Lookup Table (LUT) for PBR rendering.
  * 
  * @param size Size of the LUT texture
  * @param numSamples Number of Monte Carlo samples per texel
@@ -119,7 +119,7 @@ std::pair<float, float> integrateBRDF(float NdotV, float roughness, uint32_t num
  * The LUT maps roughness (y-axis) and NoV (x-axis) to scale and bias terms.
  * Values are stored as [r,g,r,g,...] where r=scale, g=bias
  */
-std::vector<float> generateBRDFLookupTable(
+std::vector<float> generateDFGLookupTable(
     uint32_t size, 
     uint32_t numSamples
 ) {
@@ -149,8 +149,8 @@ std::vector<float> generateBRDFLookupTable(
     return lutData;
 }
 
-int generateBRDFLookupTableToFile(uint32_t size, uint32_t numSamples, const char* fileName) {
-    std::vector<float> lutData = generateBRDFLookupTable(size, numSamples);
+int generateDFGLookupTableToFile(uint32_t size, uint32_t numSamples, const char* fileName) {
+    std::vector<float> lutData = generateDFGLookupTable(size, numSamples);
 
     ktxTexture2* texture;
     KTX_error_code result;

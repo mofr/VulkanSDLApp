@@ -1,3 +1,3 @@
-type: brdfLut
+type: dfgLut
 size: 512
 numSamples: 1024

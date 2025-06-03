@@ -64,14 +64,14 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
     return 0;
 }
 
-int processBrdfLut(
+int processDfgLut(
     [[maybe_unused]] const std::filesystem::path& assetPath,
     fkyaml::node const& yaml,
     const std::string& outDir
 ) {
     uint32_t size = yaml["size"].as_int();
     uint32_t numSamples = yaml["numSamples"].as_int();
-    return generateBRDFLookupTableToFile(size, numSamples, (outDir + "/brdf.ktx2").c_str());
+    return generateDFGLookupTableToFile(size, numSamples, (outDir + "/dfg.ktx2").c_str());
 }
 
 int processAsset(const std::filesystem::path& assetPath, const std::string& outDir) {
@@ -79,7 +79,7 @@ int processAsset(const std::filesystem::path& assetPath, const std::string& outD
     std::string assetType = assetYaml["type"].as_str();
 
     if (assetType == "envmap") return processEnvmap(assetPath, assetYaml, outDir);
-    if (assetType == "brdfLut") return processBrdfLut(assetPath, assetYaml, outDir);
+    if (assetType == "dfgLut") return processDfgLut(assetPath, assetYaml, outDir);
 
     std::cout << "Unknown asset type: " << assetType << std::endl;
     return -1;

@@ -28,7 +28,7 @@ layout(set = 0, binding = 4) uniform Sun {
     float sunSolidAngle;
     vec3 _sunPadding3;
 };
-layout(set = 0, binding = 5) uniform sampler2D brdfLut;
+layout(set = 0, binding = 5) uniform sampler2D dfgLut;
 
 layout(set = 1, binding = 0) uniform sampler2D baseColorTexture;
 layout(set = 1, binding = 1) uniform sampler2D roughnessTexture;
@@ -155,8 +155,10 @@ void main() {
 
         // Specular component
         vec3 prefilteredColor = texture(env, R).rgb; // No LOD yet
-        vec2 brdf = texture(brdfLut, vec2(NdotV, roughness)).rg;
-        vec3 specularIBL = prefilteredColor * (F0 * brdf.x + brdf.y);
+        vec2 dfg = texture(dfgLut, vec2(NdotV, roughness)).rg;
+        float scale = dfg.r;
+        float bias = dfg.g;
+        vec3 specularIBL = prefilteredColor * (scale * F0 + bias);
         result += ambient_kS * specularIBL;
     }
 

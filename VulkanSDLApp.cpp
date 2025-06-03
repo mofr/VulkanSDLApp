@@ -147,8 +147,8 @@ public:
         VkPhysicalDevice physicalDevice,
         VkDevice device,
         uint32_t framesInFlight,
-        VkImageView brdfLut,
-        VkSampler brdfLutSampler
+        VkImageView dfgLut,
+        VkSampler dfgLutSampler
     ):
         m_device(device),
         m_viewProjection(physicalDevice, device, framesInFlight),
@@ -158,7 +158,7 @@ public:
     {
         m_descriptorPool = createDescriptorPool(device, framesInFlight);
         m_descriptorSetLayout = createDescriptorSetLayout(device);
-        m_descriptorSets = createDescriptorSets(framesInFlight, brdfLut, brdfLutSampler);
+        m_descriptorSets = createDescriptorSets(framesInFlight, dfgLut, dfgLutSampler);
     }
 
     VkDescriptorSetLayout descriptorSetLayout() const {return m_descriptorSetLayout;}
@@ -292,13 +292,13 @@ private:
 
     std::vector<VkDescriptorSet> createDescriptorSets(
         uint32_t framesInFlight,
-        VkImageView brdfLut,
-        VkSampler brdfLutSampler
+        VkImageView dfgLut,
+        VkSampler dfgLutSampler
     ) {
-        VkDescriptorImageInfo brdfLutInfo {
+        VkDescriptorImageInfo dfgLutInfo {
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = brdfLut,
-            .sampler = brdfLutSampler,
+            .imageView = dfgLut,
+            .sampler = dfgLutSampler,
         };
 
         std::vector<VkDescriptorSetLayout> layouts(framesInFlight, m_descriptorSetLayout);
@@ -359,7 +359,7 @@ private:
                     .dstArrayElement = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     .descriptorCount = 1,
-                    .pImageInfo = &brdfLutInfo,
+                    .pImageInfo = &dfgLutInfo,
                 },
             };
             vkUpdateDescriptorSets(m_device, writes.size(), writes.data(), 0, nullptr);
@@ -415,16 +415,16 @@ int main() {
         vulkanContext.commandPool
     );
 
-    VkImageView brdfLut = textureLoader.loadKtx("build/brdf.ktx2");
-    VkSampler brdfLutSampler = createLookupTableSampler(vulkanContext.device);
+    VkImageView dfgLut = textureLoader.loadKtx("build/dfg.ktx2");
+    VkSampler dfgLutSampler = createLookupTableSampler(vulkanContext.device);
 
     uint32_t framesInFlight = 3;
     FrameLevelResources frameLevelResources(
         vulkanContext.physicalDevice,
         vulkanContext.device,
         framesInFlight,
-        brdfLut,
-        brdfLutSampler
+        dfgLut,
+        dfgLutSampler
     );
 
     std::vector<VkSurfaceFormatKHR> preferredSurfaceFormats = {
