@@ -1,5 +1,4 @@
 type: envmap
 faceSize: 1024
-ktx: true
 extractSun: true
 sunSolidAngle: 0.0025

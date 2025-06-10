@@ -136,34 +136,6 @@ void equirectangularToCubemapFace(
     }
 }
 
-int convertEquirectangularToCubemap(ImageData const& image, const char* outputDir, int faceSize) {
-    float* equiRgba = static_cast<float*>(image.data.get());
-    int width = image.width;
-    int height = image.height;
-
-    auto outputData = std::make_unique<float[]>(faceSize * faceSize * 4);
-    std::filesystem::path outputDirPath = outputDir;
-    std::filesystem::create_directories(outputDirPath);
-    static std::array faceNames = {"px", "nx", "py", "ny", "pz", "nz"};
-
-    for (int faceIndex = 0; faceIndex < 6; faceIndex++) {
-        equirectangularToCubemapFace(equiRgba, width, height, outputData.get(), faceSize, static_cast<CubemapFace>(faceIndex));
-        std::string filename = std::string(faceNames[faceIndex]) + ".exr";
-        std::filesystem::path outputFilepath = outputDirPath / filename;
-        const char* err = nullptr;
-        int saveExrResult = SaveEXR(outputData.get(), faceSize, faceSize, 4, 0, outputFilepath.c_str(), &err);
-        if (TINYEXR_SUCCESS != saveExrResult) {
-            std::cerr << "Failed to save EXR file '" << outputFilepath << "' code = " << saveExrResult << std::endl;
-            if (err) {
-                std::cerr << err << std::endl;
-                FreeEXRErrorMessage(err);
-            }
-            return -1;
-        }
-    }
-    return 0;
-}
-
 int convertEquirectangularToCubemapKtx(ImageData const& image, const char* outputFileName, int faceSize) {
     float* equiRgba = static_cast<float*>(image.data.get());
     int width = image.width;

@@ -51,24 +51,6 @@ endforeach
 
 shaders_dep = declare_dependency(sources: compiled_shaders)
 
-ProcessEnvmap  = executable(
-        'ProcessEnvmap',
-        [
-                'ProcessEnvmap.cpp',
-                'CubemapFunctions.h',
-                '3rdparty/CLI11.hpp',
-                '3rdparty/tinyexr.h',
-                '3rdparty/tinyexr.cc',
-                '3rdparty/miniz.c',
-                '3rdparty/stb_image.cpp',
-                ],
-        include_directories: ['3rdparty'],
-        dependencies: [
-                dependency('ktx'),
-                dependency('glm'),
-        ],
-)
-
 ProcessAssets  = executable(
         'ProcessAssets',
         [
