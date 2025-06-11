@@ -154,7 +154,8 @@ void main() {
         result += ambient_kD * diffusedRadiance * albedo;
 
         // Specular component
-        vec3 prefilteredColor = texture(env, R).rgb; // No LOD yet
+        float mipLevel = roughness * float(textureQueryLevels(env) - 1);
+        vec3 prefilteredColor = textureLod(env, R, mipLevel).rgb;
         vec2 dfg = texture(dfgLut, vec2(NdotV, roughness)).rg;
         float scale = dfg.r;
         float bias = dfg.g;

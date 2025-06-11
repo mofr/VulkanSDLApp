@@ -44,8 +44,9 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
         saveSunDataToFile(sunData, sunDataFileName.c_str());
     }
 
+    const int sampleCount = 1024;
     std::string outputFileName = std::string(outDir / inputFileName.stem()) + ".ktx2";
-    if (convertEquirectangularToCubemapKtx(imageData, outputFileName.c_str(), faceSize) != 0) {
+    if (prefilterEnvmap(imageData, outputFileName.c_str(), faceSize, sampleCount) != 0) {
         return -1;
     }
 
@@ -53,6 +54,7 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
     if (calculateDiffuseSphericalHarmonics(imageData, diffuseShFileName.c_str()) != 0) {
         return -1;
     }
+
     return 0;
 }
 

@@ -148,7 +148,7 @@ Center of equirectangular panorama is set to a default camera orientation (-Z).
 ```
 
 Image-based lighting (IBL)
-==========================
+--------------------------
 
 Spherical harmonics are calculated at build time to approximate reflected radiance for Lambertian surfaces for each particular environment.
 
@@ -157,6 +157,14 @@ Environment map represents radiance - amount of light from a particular directio
 Spherical harmonics approximate the irradiance (all incoming light).
 
 Then spherical harmonics are weighted to accomodate the convolution with Lambertian BRDF (cos(theta)).
+
+The environment map is prefiltered during build time:
+- Mip level 0 represent the original radiance map
+- Higher levels represent the prefiltered BRDF for different roughness levels
+
+To debug the ktx2 files:
+
+`ktx extract golden_gate_hills_4k.ktx2 --all --output golden_gate_hills_4k`
 
 Sun
 ---

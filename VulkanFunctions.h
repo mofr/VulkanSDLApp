@@ -250,7 +250,7 @@ VkSampler createEnvironmentSampler(VkDevice device, float maxAnisotropy) {
         .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .mipLodBias = 0.0f,
         .minLod = 0.0f,
-        .maxLod = 0.0f,
+        .maxLod = VK_LOD_CLAMP_NONE,
     };
 
     VkSampler sampler;

@@ -31,49 +31,53 @@ void directionToEquirectangular(float x, float y, float z, float& u, float& v) {
 
 // Top-left corner: (x, y) = (0, 0)
 // Returns direction vector in world-space
-void facePointToDirection(CubemapFace face, int faceSize, int x, int y, float& dirX, float& dirY, float& dirZ) {
+glm::vec3 facePointToDirection(CubemapFace face, int faceSize, int x, int y) {
     // uv = (-1, -1) is a top-left corner of the face looking on it from outside of the cube
     float u = (x + 0.5f) * 2 / faceSize - 1;  // [-1, 1]
     float v = (y + 0.5f) * 2 / faceSize - 1;  // [-1, 1]
 
+    glm::vec3 dir;
+
     switch (face) {
         case POSITIVE_X:
-            dirX = 1.0f;
-            dirY = -v;
-            dirZ = -u;
+            dir.x = 1.0f;
+            dir.y = -v;
+            dir.z = -u;
             break;
         case NEGATIVE_X:
-            dirX = -1.0f;
-            dirY = -v;
-            dirZ = u;
+            dir.x = -1.0f;
+            dir.y = -v;
+            dir.z = u;
             break;
         case POSITIVE_Y:
-            dirX = u;
-            dirY = 1.0f;
-            dirZ = v;
+            dir.x = u;
+            dir.y = 1.0f;
+            dir.z = v;
             break;
         case NEGATIVE_Y:
-            dirX = u;
-            dirY = -1.0f;
-            dirZ = -v;
+            dir.x = u;
+            dir.y = -1.0f;
+            dir.z = -v;
             break;
         case POSITIVE_Z:
-            dirX = u;
-            dirY = -v;
-            dirZ = 1.0f;
+            dir.x = u;
+            dir.y = -v;
+            dir.z = 1.0f;
             break;
         case NEGATIVE_Z:
-            dirX = -u;
-            dirY = -v;
-            dirZ = -1.0f;
+            dir.x = -u;
+            dir.y = -v;
+            dir.z = -1.0f;
             break;
     }
     
     // Normalize the direction vector
-    float len = sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
-    dirX /= len;
-    dirY /= len;
-    dirZ /= len;
+    float len = sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+    dir.x /= len;
+    dir.y /= len;
+    dir.z /= len;
+
+    return dir;
 }
 
 // Sample image with bilinear interpolation
@@ -111,84 +115,35 @@ void sampleImage(const float* image, int width, int height, float u, float v, fl
     }
 }
 
-void equirectangularToCubemapFace(
-    float* input,
-    int inputWidth,
-    int inputHeight,
-    float* faceData,
-    int faceSize,
-    CubemapFace face
-) {
-    for (int y = 0; y < faceSize; y++) {
-        for (int x = 0; x < faceSize; x++) {
-            float dirX, dirY, dirZ;
-            facePointToDirection(face, faceSize, x, y, dirX, dirY, dirZ);
-            float u, v;
-            directionToEquirectangular(dirX, dirY, dirZ, u, v);
-            float rgba[4];
-            sampleImage(input, inputWidth, inputHeight, u, v, rgba);
-
-            *(faceData++) = rgba[0];
-            *(faceData++) = rgba[1];
-            *(faceData++) = rgba[2];
-            *(faceData++) = rgba[3];
-        }
-    }
+glm::vec3 sampleEquirectangular(ImageData const& image, glm::vec3 dir) {
+    float u, v;
+    directionToEquirectangular(dir.x, dir.y, dir.z, u, v);
+    float rgba[4];
+    float* data = static_cast<float*>(image.data.get());
+    sampleImage(data, image.width, image.height, u, v, rgba);
+    return glm::vec3(rgba[0], rgba[1], rgba[2]);
 }
 
-int convertEquirectangularToCubemapKtx(ImageData const& image, const char* outputFileName, int faceSize) {
-    float* equiRgba = static_cast<float*>(image.data.get());
-    int width = image.width;
-    int height = image.height;
+std::vector<float> convertEquirectangularToCubemap(ImageData const& image, int faceSize) {
+    // Allocate memory for 6 faces * faceSize^2 * 3 channels (RGB)
+    std::vector<float> cubemapData(6 * faceSize * faceSize * 3);
 
-    ktxTexture2* texture;
-    KTX_error_code result;
-    
-    ktxTextureCreateInfo createInfo = {
-        .vkFormat = VK_FORMAT_R32G32B32A32_SFLOAT,
-        .baseWidth = static_cast<ktx_uint32_t>(faceSize),
-        .baseHeight = static_cast<ktx_uint32_t>(faceSize),
-        .baseDepth = 1,
-        .numDimensions = 2,
-        .numLevels = 1,
-        .numLayers = 1,
-        .numFaces = 6,
-        .isArray = false,
-        .generateMipmaps = false,
-    };
-    result = ktxTexture2_Create(
-        &createInfo,
-        KTX_TEXTURE_CREATE_ALLOC_STORAGE,
-        &texture
-    );
-    if (result != KTX_SUCCESS) {
-        std::cerr << ktxErrorString(result) << std::endl;
-        return -1;
-    }
-    
-    ktx_size_t srcSizeInBytes = 4 * 4 * faceSize * faceSize;
-    auto outputData = std::make_unique<float[]>(4 * faceSize * faceSize);
-    ktx_uint32_t level = 0;
-    ktx_uint32_t layer = 0;
     for (ktx_uint32_t faceSlice = 0; faceSlice < 6; faceSlice++) {
-        equirectangularToCubemapFace(equiRgba, width, height, outputData.get(), faceSize, static_cast<CubemapFace>(faceSlice));
-        result = ktxTexture_SetImageFromMemory(
-            ktxTexture(texture),
-            level,
-            layer,
-            faceSlice,
-            (ktx_uint8_t*)outputData.get(),
-            srcSizeInBytes
-        );
-        if (result != KTX_SUCCESS) {
-            std::cerr << ktxErrorString(result) << std::endl;
-            return -1;
+        CubemapFace face = static_cast<CubemapFace>(faceSlice);
+        for (int y = 0; y < faceSize; y++) {
+            for (int x = 0; x < faceSize; x++) {
+                glm::vec3 dir = facePointToDirection(face, faceSize, x, y);
+                glm::vec3 rgb = sampleEquirectangular(image, dir);
+
+                int pixelIndex = (face * faceSize * faceSize + y * faceSize + x) * 3;
+                cubemapData[pixelIndex + 0] = rgb.r;
+                cubemapData[pixelIndex + 1] = rgb.g;
+                cubemapData[pixelIndex + 2] = rgb.b;
+            }
         }
     }
 
-    ktxTexture_WriteToNamedFile(ktxTexture(texture), outputFileName);
-    ktxTexture_Destroy(ktxTexture(texture));
-    return 0;
+    return cubemapData;
 }
 
 glm::vec3 worldDirFromSphericalCoordinates(float sinTheta, float cosTheta, float sinPhi, float cosPhi) {
@@ -332,4 +287,184 @@ std::vector<glm::vec3> loadSHCoeffs(const char* filename) {
     
     inFile.close();
     return shCoeffs;
+}
+
+glm::vec3 importanceSampleGGX(const ImageData& equirectangularImage, const glm::vec3& normal, float roughness, int sampleCount) {
+    glm::vec3 color(0.0f);
+    float totalWeight = 0.0f;
+
+    // Create tangent space basis
+    glm::vec3 up = abs(normal.z) < 0.999f ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
+    glm::vec3 tangent = glm::normalize(glm::cross(up, normal));
+    glm::vec3 bitangent = glm::cross(normal, tangent);
+    
+    float alpha = roughness * roughness;
+    
+    for (int i = 0; i < sampleCount; ++i) {
+        // TODO: use a proper random number generator
+        float xi1 = static_cast<float>(rand()) / RAND_MAX;
+        float xi2 = static_cast<float>(rand()) / RAND_MAX;
+        
+        // Importance sample GGX distribution
+        float phi = 2.0f * M_PI * xi1;
+        float cosTheta = sqrt((1.0f - xi2) / (1.0f + (alpha * alpha - 1.0f) * xi2));
+        float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+        
+        // Convert to Cartesian coordinates in tangent space
+        glm::vec3 halfVector(
+            sinTheta * cos(phi),
+            sinTheta * sin(phi),
+            cosTheta
+        );
+        
+        // Transform to world space
+        glm::vec3 sampleDir = halfVector.x * tangent + halfVector.y * bitangent + halfVector.z * normal;
+        
+        // Calculate reflection direction
+        glm::vec3 lightDir = glm::normalize(2.0f * glm::dot(sampleDir, normal) * sampleDir - normal);
+
+        float NdotL = glm::max(glm::dot(normal, lightDir), 0.0f);
+        if (NdotL > 0.0f) {
+            glm::vec3 envColor = sampleEquirectangular(equirectangularImage, lightDir);
+            color += envColor * NdotL;
+            totalWeight += NdotL;
+        }
+    }
+    
+    return totalWeight > 0.0f ? color / totalWeight : glm::vec3(0.0f);
+}
+
+std::vector<float> filterCubemapForRoughness(const ImageData& equirectangularImage, int faceSize, float roughness, int sampleCount) {
+    // Allocate memory for 6 faces * faceSize^2 * 3 channels (RGB)
+    std::vector<float> cubemapData(6 * faceSize * faceSize * 3);
+    
+    // For each face of the cubemap
+    for (int face = 0; face < 6; ++face) {
+        for (int y = 0; y < faceSize; ++y) {
+            for (int x = 0; x < faceSize; ++x) {
+                glm::vec3 dir = facePointToDirection(static_cast<CubemapFace>(face), faceSize, x, y);
+                
+                // Apply importance sampling based on GGX/Trowbridge-Reitz distribution
+                glm::vec3 filteredColor = importanceSampleGGX(equirectangularImage, dir, roughness, sampleCount);
+                
+                // Store in cubemap data
+                int pixelIndex = (face * faceSize * faceSize + y * faceSize + x) * 3;
+                cubemapData[pixelIndex + 0] = filteredColor.r;
+                cubemapData[pixelIndex + 1] = filteredColor.g;
+                cubemapData[pixelIndex + 2] = filteredColor.b;
+            }
+        }
+    }
+    
+    return cubemapData;
+}
+
+int saveCubemapMipsToKtx2(const std::vector<std::vector<float>>& mipData, const char* filename, int baseFaceSize) {
+    ktxTexture2* texture;
+    KTX_error_code result;
+    
+    ktxTextureCreateInfo createInfo = {
+        .vkFormat = VK_FORMAT_R32G32B32A32_SFLOAT,
+        .baseWidth = static_cast<ktx_uint32_t>(baseFaceSize),
+        .baseHeight = static_cast<ktx_uint32_t>(baseFaceSize),
+        .baseDepth = 1,
+        .numDimensions = 2,
+        .numLevels = static_cast<ktx_uint32_t>(mipData.size()),
+        .numLayers = 1,
+        .numFaces = 6,
+        .isArray = false,
+        .generateMipmaps = false,
+    };
+    
+    result = ktxTexture2_Create(
+        &createInfo,
+        KTX_TEXTURE_CREATE_ALLOC_STORAGE,
+        &texture
+    );
+    if (result != KTX_SUCCESS) {
+        std::cerr << "Failed to create KTX2 texture: " << ktxErrorString(result) << std::endl;
+        return -1;
+    }
+    
+    // Process each mip level
+    for (ktx_uint32_t mipLevel = 0; mipLevel < mipData.size(); ++mipLevel) {
+        int currentFaceSize = baseFaceSize >> mipLevel; // Divide by 2^mipLevel
+        if (currentFaceSize < 1) currentFaceSize = 1;
+        
+        // Convert RGB data to RGBA by adding alpha channel
+        auto rgbaData = std::make_unique<float[]>(4 * currentFaceSize * currentFaceSize);
+        
+        // Process each face
+        for (ktx_uint32_t face = 0; face < 6; ++face) {
+            // Calculate source offset in RGB data (3 channels per pixel)
+            int srcOffset = face * currentFaceSize * currentFaceSize * 3;
+            
+            // Convert RGB to RGBA for this face
+            for (int pixel = 0; pixel < currentFaceSize * currentFaceSize; ++pixel) {
+                int srcIdx = srcOffset + pixel * 3;
+                int dstIdx = pixel * 4;
+                
+                rgbaData[dstIdx + 0] = mipData[mipLevel][srcIdx + 0]; // R
+                rgbaData[dstIdx + 1] = mipData[mipLevel][srcIdx + 1]; // G
+                rgbaData[dstIdx + 2] = mipData[mipLevel][srcIdx + 2]; // B
+                rgbaData[dstIdx + 3] = 1.0f; // A (alpha = 1.0)
+            }
+            
+            ktx_size_t faceDataSize = 4 * sizeof(float) * currentFaceSize * currentFaceSize;
+            
+            result = ktxTexture_SetImageFromMemory(
+                ktxTexture(texture),
+                mipLevel,
+                0, // layer
+                face,
+                reinterpret_cast<ktx_uint8_t*>(rgbaData.get()),
+                faceDataSize
+            );
+            
+            if (result != KTX_SUCCESS) {
+                std::cerr << "Failed to set image data for mip " << mipLevel 
+                          << ", face " << face << ": " << ktxErrorString(result) << std::endl;
+                ktxTexture_Destroy(ktxTexture(texture));
+                return -1;
+            }
+        }
+    }
+    
+    result = ktxTexture_WriteToNamedFile(ktxTexture(texture), filename);
+    if (result != KTX_SUCCESS) {
+        std::cerr << "Failed to write KTX2 file: " << ktxErrorString(result) << std::endl;
+        ktxTexture_Destroy(ktxTexture(texture));
+        return -1;
+    }
+    
+    ktxTexture_Destroy(ktxTexture(texture));
+    return 0;
+}
+
+int prefilterEnvmap(const ImageData& inputImage, const char* outputFileName, int baseFaceSize, int sampleCount) {
+    // Calculate number of mip levels based on face size
+    int numMipLevels = static_cast<int>(std::floor(std::log2(baseFaceSize))) + 1;
+    
+    // Create cubemap data for all mip levels
+    std::vector<std::vector<float>> cubemapMips;
+    cubemapMips.resize(numMipLevels);
+
+    // Base level contains original map
+    cubemapMips[0] = convertEquirectangularToCubemap(inputImage, baseFaceSize);
+    
+    // mips 1+ contain prefiltered data for specular reflections
+    for (int mip = 1; mip < numMipLevels; ++mip) {
+        int faceSize = baseFaceSize >> mip; // Divide by 2^mip
+        if (faceSize < 1) faceSize = 1;
+        
+        // Calculate roughness for this mip level
+        // Mip 0 = roughness 0 (mirror), higher mips = higher roughness
+        float roughness = static_cast<float>(mip) / static_cast<float>(numMipLevels - 1);
+        
+        // Generate filtered cubemap for this roughness level
+        std::vector<float> filteredCubemap = filterCubemapForRoughness(inputImage, faceSize, roughness, sampleCount);
+        cubemapMips[mip] = std::move(filteredCubemap);
+    }
+    
+    return saveCubemapMipsToKtx2(cubemapMips, outputFileName, baseFaceSize);
 }
