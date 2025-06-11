@@ -154,13 +154,13 @@ void main() {
         result += ambient_kD * diffusedRadiance * albedo;
 
         // Specular component
-        float mipLevel = roughness * float(textureQueryLevels(env) - 1);
+        float mipLevel = roughness * 6;
         vec3 prefilteredColor = textureLod(env, R, mipLevel).rgb;
         vec2 dfg = texture(dfgLut, vec2(NdotV, roughness)).rg;
         float scale = dfg.r;
         float bias = dfg.g;
         vec3 specularIBL = prefilteredColor * (scale * F0 + bias);
-        result += ambient_kS * specularIBL;
+        result += specularIBL;
     }
 
     result += emitFactor;

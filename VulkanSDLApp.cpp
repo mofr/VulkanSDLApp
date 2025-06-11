@@ -587,9 +587,9 @@ int main() {
         meshObjects.push_back(floorObj);
     }
 
-    for (int x = 0; x < 4; x++) {
+    for (int x = 0; x < 6; x++) {
         for (int y = 0; y < 2; y++) {
-            static std::array roughness = {0.1f, 0.3f, 0.6f, 0.9f};
+            static std::array roughness = {0.1f, 0.25f, 0.4f, 0.6f, 0.75f, 0.9f};
             static std::array metallic = {0.0f, 1.0f};
             Material material {
                 .baseColorFactor = glm::vec3(0.7f),
@@ -598,7 +598,7 @@ int main() {
             };
             Model model {createSphereMesh(4, 0.2), material};
             MeshObject meshObj = transferModelToGpu(vulkanContext, config.maxAnisotropy, pipeline, model);
-            meshObj.position = 0.5f * (glm::vec3{x - 1.5f, y, 0}) + glm::vec3{0, 0, -2.0f};
+            meshObj.position = (glm::vec3{0.5f * x - 1.25f, y, 0}) + glm::vec3{0, 0, -2.0f};
             meshObjects.push_back(meshObj);
         }
     }

@@ -2,7 +2,6 @@ Rendering
 - (IN PROGRESS) Implement PBR
  - (IN PROGRESS) IBL specular reflections
   - The computation is long: either use GPU or cache it OR lower sample count while debugging
-  - Compensate roughness for the natural blur from smaller resolution
   - Use proper random number generator in GGX importance sampling
   - Deal with strong aliasing on edges
  - Implement normal mapping
