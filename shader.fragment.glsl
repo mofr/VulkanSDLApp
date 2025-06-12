@@ -114,7 +114,7 @@ void main() {
 
     vec3 N = normalize(fragNormal);
     vec3 V = normalize(cameraPos - fragPosition);
-    float NdotV = max(dot(N, V), 0.0);
+    float NdotV = clamp(dot(N, V), 0.001, 1.0);
     vec3 R = reflect(-V, N);
 
     vec3 result = vec3(0);
@@ -146,8 +146,8 @@ void main() {
     // Ambient
     {
         // Split diffuse and specular components based on fresnel factor
-        vec3 ambient_kS = fresnelSchlickRoughness(NdotV, F0, roughness);
-        vec3 ambient_kD = 1.0 - ambient_kS;
+        vec3 F = fresnelSchlickRoughness(NdotV, F0, roughness);
+        vec3 ambient_kD = 1.0 - F;
 
         // Diffuse component
         vec3 diffusedRadiance = lambertianReflectedRadiance(N);
@@ -155,11 +155,13 @@ void main() {
 
         // Specular component
         float mipLevel = roughness * 6;
-        vec3 prefilteredColor = textureLod(env, R, mipLevel).rgb;
-        vec2 dfg = texture(dfgLut, vec2(NdotV, roughness)).rg;
+        vec3 envColor = textureLod(env, R, mipLevel).rgb;
+        vec2 dfg = texture(dfgLut, vec2(sqrt(NdotV), roughness)).rg;
         float scale = dfg.r;
         float bias = dfg.g;
-        vec3 specularIBL = prefilteredColor * (scale * F0 + bias);
+        vec3 specularColor = scale * F + bias;
+        specularColor = clamp(specularColor, 0.0, 0.99);
+        vec3 specularIBL = envColor * specularColor;
         result += specularIBL;
     }
 

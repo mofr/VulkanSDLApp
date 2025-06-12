@@ -2,3 +2,4 @@ type: envmap
 faceSize: 1024
 extractSun: true
 sunSolidAngle: 0.0025
+specularSampleCount: 1024

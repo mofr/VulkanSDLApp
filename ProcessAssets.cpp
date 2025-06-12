@@ -30,6 +30,7 @@ void saveSunDataToFile(ExtractedSunData const& sunData, const char* fileName) {
 int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& yaml, const std::string& outDir) {
     int faceSize = yaml["faceSize"].as_int();
     bool extractSun = yaml.contains("extractSun") ? yaml["extractSun"].as_bool() : false;
+    int specularSampleCount = yaml.contains("specularSampleCount") ? yaml["specularSampleCount"].as_int() : 16;
     const std::filesystem::path inputFileName = assetPath.string().substr(0, assetPath.string().size() - std::string(".asset.yaml").size());
     ImageData imageData = loadImage(inputFileName);
 
@@ -44,9 +45,8 @@ int processEnvmap(const std::filesystem::path& assetPath, fkyaml::node const& ya
         saveSunDataToFile(sunData, sunDataFileName.c_str());
     }
 
-    const int sampleCount = 1024;
     std::string outputFileName = std::string(outDir / inputFileName.stem()) + ".ktx2";
-    if (prefilterEnvmap(imageData, outputFileName.c_str(), faceSize, sampleCount) != 0) {
+    if (prefilterEnvmap(imageData, outputFileName.c_str(), faceSize, specularSampleCount) != 0) {
         return -1;
     }
 
@@ -65,7 +65,8 @@ int processDfgLut(
 ) {
     uint32_t size = yaml["size"].as_int();
     uint32_t numSamples = yaml["numSamples"].as_int();
-    return generateDFGLookupTableToFile(size, numSamples, (outDir + "/dfg.ktx2").c_str());
+    std::vector<float> lutData = generateDFGLookupTable(size, numSamples);
+    return generate2DLookupTableToFile(lutData, size, (outDir + "/dfg.ktx2").c_str());
 }
 
 int processAsset(const std::filesystem::path& assetPath, const std::string& outDir) {

@@ -132,13 +132,16 @@ std::vector<float> generateDFGLookupTable(
             // Convert texture coordinates to roughness and NdotV
             float roughness = float(y) / float(size - 1);
             float NdotV = float(x) / float(size - 1);
-            
+
+            // Use quadratic scale to increase sample count at grazing angles.
+            NdotV *= NdotV;
+
             // Clamp NdotV to avoid singularity
             NdotV = std::max(NdotV, 0.001f);
             
             // Calculate BRDF terms
             auto [scale, bias] = integrateBRDF(NdotV, roughness, numSamples);
-            
+
             // Store in the output array
             size_t index = (y * size + x) * 2;
             lutData[index + 0] = scale; // R = scale
@@ -149,9 +152,7 @@ std::vector<float> generateDFGLookupTable(
     return lutData;
 }
 
-int generateDFGLookupTableToFile(uint32_t size, uint32_t numSamples, const char* fileName) {
-    std::vector<float> lutData = generateDFGLookupTable(size, numSamples);
-
+int generate2DLookupTableToFile(std::vector<float> lutData, uint32_t size, const char* fileName) {
     ktxTexture2* texture;
     KTX_error_code result;
     

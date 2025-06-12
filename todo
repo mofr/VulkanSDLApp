@@ -3,13 +3,15 @@ Rendering
  - (IN PROGRESS) IBL specular reflections
   - The computation is long: either use GPU or cache it OR lower sample count while debugging
   - Use proper random number generator in GGX importance sampling
-  - Deal with strong aliasing on edges
  - Implement normal mapping
 - Animate lights (position and color/intensity)
 - Point light
 - Spot light
 - Area light
 - Bloom
+- Reduce IBL reflection aliasing at grazing angles at distance
+ - Use array of cubemaps for different roughness levels to free mip levels for 
+ - Or a bit trickier, but more efficient: calculate mipLevel based on two parameters: roughness, ???
 - Make normals smoothing optional
 - Diffuse spherical harmonics: apply windowing functions (like Hanning or Hamming filters)
 - Separate the following data per frame in flight:
